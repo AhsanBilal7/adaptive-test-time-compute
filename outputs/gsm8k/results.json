@@ -1,7 +1,0 @@
-{
-  "dataset": "gsm8k",
-  "n": 200,
-  "acc_entropy_select": 0.06,
-  "acc_greedy": 0.04,
-  "acc_self_consistency": 0.015
-}
