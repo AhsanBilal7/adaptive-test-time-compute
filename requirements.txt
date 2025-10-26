@@ -1,0 +1,6 @@
+ollama
+pyyaml
+tqdm
+datasets
+tenacity
+python-dotenv
