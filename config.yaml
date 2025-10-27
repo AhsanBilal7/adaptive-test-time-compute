@@ -2,29 +2,34 @@ seed: 42
 
 model:
   name: ${OLLAMA_MODEL}
-  temperature: 0.8
+  temperature: 0.7
   top_p: 0.95
-  max_tokens: 512
+  max_tokens: 1024
   stop: ["\n\n"]
 
+# As the lzw compressability is  in range 0 to 2 o selecting the sweet spot range
+#TODO Should we change it
 reasoning:
   K: 8
-  sweet_spot:
-    low: 0.30
-    high: 0.60
+  max_steps: 5
+  sweet_spot:    
+    low: 0.60
+    high: 1.20
     prefer_center: true
 
 dataset:
-  name: gsm8k
+  # name: gsm8k
+  name: aime25
   split: test
-  limit: 200
+  limit: 50
+  # limit: -1
 
 baselines:
   greedy: true
   self_consistency: true
 
 io:
-  out_dir: outputs/gsm8k
+  out_dir: outputs/AIME25
   save_jsonl: true
   save_traces: true
   verbose_samples: 3
