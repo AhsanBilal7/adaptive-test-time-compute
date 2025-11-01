@@ -1,7 +1,0 @@
-{
-  "dataset": "aime25",
-  "n": 30,
-  "acc_iterative_selection": 0.0,
-  "acc_greedy": 0.0,
-  "acc_self_consistency": 0.0
-}

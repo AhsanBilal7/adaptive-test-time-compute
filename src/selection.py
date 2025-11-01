@@ -32,6 +32,29 @@ def pick_sweet_spot(chains: List[str], low: float, high: float, prefer_center=Tr
     return i_best, r_best
 
 
+def pick_lowest_compression(chains: List[str]) -> Tuple[int, float]:
+    """Select the chain with the LOWEST LZW compression ratio (most compressible)."""
+    ratios = score_chains(chains)
+    i_best = min(enumerate(ratios), key=lambda t: t[1])[0]
+    return i_best, ratios[i_best]
+
+
+def pick_highest_compression(chains: List[str]) -> Tuple[int, float]:
+    """Select the chain with the HIGHEST LZW compression ratio (least compressible)."""
+    ratios = score_chains(chains)
+    i_best = max(enumerate(ratios), key=lambda t: t[1])[0]
+    return i_best, ratios[i_best]
+
+
+def pick_median_compression(chains: List[str]) -> Tuple[int, float]:
+    """Select the chain with the MEDIAN LZW compression ratio."""
+    ratios = score_chains(chains)
+    sorted_with_idx = sorted(enumerate(ratios), key=lambda t: t[1])
+    median_idx = len(sorted_with_idx) // 2
+    i_best, r_best = sorted_with_idx[median_idx]
+    return i_best, r_best
+
+
 def self_consistency_majority(answers: List[str]) -> str:
     from collections import Counter
     c = Counter(a for a in answers if a is not None)

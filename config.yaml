@@ -13,23 +13,23 @@ reasoning:
   K: 8
   max_steps: 5
   sweet_spot:    
-    low: 0.60
-    high: 1.20
+    low: 0.80
+    high: 1.30
     prefer_center: true
 
 dataset:
-  # name: gsm8k
-  name: aime25
+  name: gsm8k
+  # name: aime25
   split: test
-  limit: 50
-  # limit: -1
+  # limit: 50
+  limit: -1
 
 baselines:
   greedy: true
   self_consistency: true
 
 io:
-  out_dir: outputs/AIME25
+  out_dir: outputs/lzw_experiment
   save_jsonl: true
   save_traces: true
   verbose_samples: 3
