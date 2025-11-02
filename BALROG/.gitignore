@@ -1,12 +1,3 @@
-*__pycache__/
-test.json
-*.json
-*.csv
-*.out
-*.pid
-*.toml
-
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
