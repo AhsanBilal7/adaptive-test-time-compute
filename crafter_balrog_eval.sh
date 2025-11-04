@@ -12,8 +12,21 @@
 #   --port 8080 \
 #   --kv-cache-dtype fp8_e5m2 \
 #   --gpu-memory-utilization 0.90 \
-#   --max-num-batched-tokens 1024 \
-#   >> ./vllm_3b.out 2>&1 < /dev/null & echo $! > ./vllm_3b.pid
+#   --max-num-batched-tokens 1024 > ./vllm_3b.out 2>&1 < /dev/null & echo $! > ./vllm_3b.pid
+# nohup vllm serve "meta-llama/Llama-3.2-3B-Instruct" \
+#   --port 8080 \
+#   --kv-cache-dtype fp8_e5m2 \
+#   --max-num-batched-tokens 1024 > ./vllm_3b.out 2>&1 < /dev/null & echo $! > ./vllm_3b.pid
+# nohup vllm serve "meta-llama/Llama-3.2-1B-Instruct" \
+#   --port 8080 \
+#   --kv-cache-dtype fp8_e5m2 \
+#   --gpu-memory-utilization 0.7 \
+#   --max-num-batched-tokens 1024 > ./vllm_3b.out 2>&1 < /dev/null & echo $! > ./vllm_3b.pid
+# nohup vllm serve "meta-llama/Llama-3.2-3B-Instruct" \
+#   --port 8080 \
+#   --kv-cache-dtype fp8_e5m2 \
+#   --gpu-memory-utilization 0.90 \
+#   --max-num-batched-tokens 1024 > ./vllm_3b.out 2>&1 < /dev/null & echo $! > ./vllm_3b.pid
 # nohup vllm serve "Qwen/Qwen2-7B-Instruct" \
 #   --host 0.0.0.0 --port 8000 \
 #   --kv-cache-dtype fp8_e5m2 \
@@ -92,33 +105,35 @@
 # Example 4: Plan Every K Steps
 cd BALROG
 
-for K in 1 2 4 8 16; do
-    python eval.py \
-        envs.names=crafter \
-        agent.type=custom \
-        agent.mode=fixed \
-        agent.planning_frequency=$K \
-        agent.remember_cot=true \
-        agent.max_text_history=16 \
-        agent.max_image_history=0 \
-        eval.num_workers=16 \
-        client.client_name=vllm \
-        client.model_id="Qwen/Qwen2-7B-Instruct" \
-        client.base_url="http://0.0.0.0:8000/v1" 
-done
+# for K in 1 2 4 8 16; do
+#     python eval.py \
+#         envs.names=crafter \
+#         agent.type=custom \
+#         agent.mode=fixed \
+#         agent.planning_frequency=$K \
+#         agent.remember_cot=true \
+#         agent.max_text_history=16 \
+#         agent.max_image_history=0 \
+#         eval.num_workers=16 \
+#         eval.output_dir="results" \
+#         client.client_name=vllm \
+#         client.model_id="meta-llama/Llama-3.2-1B-Instruct" \
+#         client.base_url="http://0.0.0.0:8080/v1" 
+# done
 
-# Example 1: Dynamic Planning
-python eval.py \
-  envs.names=crafter \
-  agent.type=custom \
-  agent.mode=dynamic \
-  agent.remember_cot=true \
-  agent.max_text_history=16 \
-  agent.max_image_history=0 \
-  eval.num_workers=16 \
-  client.client_name=vllm \
-  client.model_id="Qwen/Qwen2-7B-Instruct" \
-  client.base_url="http://0.0.0.0:8000/v1" 
+# # Example 1: Dynamic Planning
+# python eval.py \
+#   envs.names=crafter \
+#   agent.type=custom \
+#   agent.mode=dynamic \
+#   agent.remember_cot=true \
+#   agent.max_text_history=16 \
+#   agent.max_image_history=0 \
+#   eval.num_workers=16 \
+#   eval.output_dir="results" \
+#   client.client_name=vllm \
+#   client.model_id="meta-llama/Llama-3.2-1B-Instruct" \
+#   client.base_url="http://0.0.0.0:8080/v1" 
 
 
 # nohup ./crafter_balrog_eval.sh \
@@ -144,3 +159,67 @@ python eval.py \
 
 
 # python eval.py envs.names=crafter agent.type=custom agent.mode=fixed agent.planning_frequency=16 agent.remember_cot=true agent.max_text_history=16 agent.max_image_history=0 eval.num_workers=16 client.client_name=vllm client.model_id="Qwen/Qwen2-7B-Instruct" client.base_url="http://0.0.0.0:8000/v1"
+
+
+
+# python eval.py \
+#     envs.names=crafter \
+#     agent.type=custom \
+#     agent.mode=fixed \
+#     agent.planning_frequency=16 \
+#     agent.fixed_tool=cot \
+#     agent.fixed_compute.strategy=best_of_n \
+#     agent.fixed_compute.param=5 \
+#     agent.remember_cot=true \
+#     agent.max_text_history=16 \
+#     eval.output_dir=  "our_results" \
+#     agent.max_image_history=0 \
+#     eval.num_workers=16 \
+#     client.client_name=vllm \
+#     client.model_id="meta-llama/Llama-3.2-1B-Instruct" \
+#     client.base_url="http://0.0.0.0:8080/v1"
+
+set -eu
+
+TOOLS="best_of_n beam_search lookahead"
+STRATEGIES="heuristic_script cot reactive_actor"
+
+for tool in $TOOLS; do
+  for strategy in $STRATEGIES; do
+    python eval.py \
+      envs.names=crafter \
+      agent.type=custom \
+      agent.mode=fixed \
+      agent.planning_frequency=16 \
+      agent.fixed_tool="$tool" \
+      agent.fixed_compute.strategy="$strategy" \
+      agent.fixed_compute.param=5 \
+      agent.remember_cot=true \
+      agent.max_text_history=16 \
+      agent.max_image_history=0 \
+      eval.num_workers=16 \
+      eval.output_dir="our_results" \
+      client.client_name=vllm \
+      client.model_id="meta-llama/Llama-3.2-1B-Instruct" \
+      client.base_url="http://0.0.0.0:8080/v1"
+  done
+done
+for tool in $TOOLS; do
+  for strategy in $STRATEGIES; do
+    python eval.py \
+      envs.names=crafter \
+      agent.type=custom \
+      agent.mode=dynamic \
+      agent.fixed_tool="$tool" \
+      agent.fixed_compute.strategy="$strategy" \
+      agent.fixed_compute.param=5 \
+      agent.remember_cot=true \
+      agent.max_text_history=16 \
+      agent.max_image_history=0 \
+      eval.num_workers=16 \
+      eval.output_dir="our_results" \
+      client.client_name=vllm \
+      client.model_id="meta-llama/Llama-3.2-1B-Instruct" \
+      client.base_url="http://0.0.0.0:8080/v1"
+  done
+done

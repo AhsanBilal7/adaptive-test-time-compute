@@ -2,14 +2,14 @@ import re
 import copy
 from balrog.agents.base import BaseAgent
 
-from tool_selector import ToolSelector
-from compute_selector import ComputeSelector
-from prm_model import PRMModel
-from reasoners.reactive_actor import ReactiveActorReasoner
-from reasoners.cot_reasoner import CoTReasoner
-from reasoners.heuristic_script_reasoner import HeuristicScriptReasoner
-from policies.crafter_policy import CrafterPolicy
-from compute_strategies import get_compute_strategy
+from balrog.agents.tool_selector import ToolSelector
+from balrog.agents.compute_selector import ComputeSelector
+from balrog.agents.prm_model import PRMModel
+from balrog.agents.reasoners.reactive_actor import ReactiveActorReasoner
+from balrog.agents.reasoners.cot_reasoner import CoTReasoner
+from balrog.agents.reasoners.heuristic_script_reasoner import HeuristicScriptReasoner
+from balrog.agents.policies.crafter_policy import CrafterPolicy
+from balrog.agents.compute_strategies import get_compute_strategy
 
 
 class CustomAgent(BaseAgent):
@@ -27,6 +27,13 @@ class CustomAgent(BaseAgent):
         use_planner (bool): Enable planning (default: True)
         use_tool_selector (bool): Enable tool selector (default: False)
         use_compute_selector (bool): Enable compute selector (default: False)
+        fixed_tool (str): Fixed tool to always use (default: None)
+            Options: 'reactive_actor', 'cot', 'heuristic_script'
+            Overrides use_tool_selector when set
+        fixed_compute (dict): Fixed compute config to always use (default: None)
+            Format: {'strategy': str, 'param': int}
+            Example: {'strategy': 'best_of_n', 'param': 3}
+            Overrides use_compute_selector when set
         dataset (str): Dataset name for heuristic policy (default: 'crafter')
     """
     
@@ -39,10 +46,19 @@ class CustomAgent(BaseAgent):
         use_planner=True,
         use_tool_selector=False,
         use_compute_selector=False,
+        fixed_tool=None,
+        fixed_compute=None,
         dataset='crafter'
     ):
         """
         Initialize the CustomAgent with mode configuration and optional selectors.
+        
+        Args:
+            fixed_tool (str): Fixed tool name to always use. Options: 'reactive_actor', 'cot', 'heuristic_script'
+                            If set, overrides use_tool_selector (sets it to False)
+            fixed_compute (dict): Fixed compute config to always use. Format: {'strategy': str, 'param': int}
+                                Example: {'strategy': 'best_of_n', 'param': 3}
+                                If set, overrides use_compute_selector (sets it to False)
         """
         super().__init__(client_factory, prompt_builder)
         self.client = client_factory()
@@ -61,9 +77,34 @@ class CustomAgent(BaseAgent):
             )
         
         self.use_planner = use_planner
-        self.use_tool_selector = use_tool_selector
-        self.use_compute_selector = use_compute_selector
         self.dataset = dataset
+        
+        self.fixed_tool = fixed_tool
+        self.fixed_compute = fixed_compute
+        
+        if fixed_tool is not None:
+            valid_tools = ['reactive_actor', 'cot', 'heuristic_script']
+            if fixed_tool not in valid_tools:
+                raise ValueError(
+                    f"fixed_tool must be one of {valid_tools}, got {fixed_tool}"
+                )
+            self.use_tool_selector = False
+        else:
+            self.use_tool_selector = use_tool_selector
+        
+        if fixed_compute is not None:
+            if not isinstance(fixed_compute, dict) or 'strategy' not in fixed_compute:
+                raise ValueError(
+                    "fixed_compute must be a dict with 'strategy' and 'param' keys"
+                )
+            valid_strategies = ['best_of_n', 'beam_search', 'lookahead']
+            if fixed_compute['strategy'] not in valid_strategies:
+                raise ValueError(
+                    f"fixed_compute strategy must be one of {valid_strategies}"
+                )
+            self.use_compute_selector = False
+        else:
+            self.use_compute_selector = use_compute_selector
         
         self.plan = None
         self.timestep = 0
@@ -78,7 +119,7 @@ class CustomAgent(BaseAgent):
         self.reasoners = {}
         self.compute_metadata_history = []
         
-        if self.use_tool_selector or self.use_compute_selector:
+        if self.use_tool_selector or self.use_compute_selector or fixed_tool or fixed_compute:
             self._initialize_selectors_and_reasoners()
     
     def _initialize_selectors_and_reasoners(self):
@@ -172,7 +213,7 @@ class CustomAgent(BaseAgent):
         if plan is not None:
             self.plan = plan
         
-        if planning_decision == 1 and (self.use_tool_selector or self.use_compute_selector):
+        if planning_decision == 1 and (self.use_tool_selector or self.use_compute_selector or self.fixed_tool or self.fixed_compute):
             action = self._execute_with_selectors(obs, messages, action)
         
         self.planning_decisions.append(planning_decision)
@@ -189,18 +230,25 @@ class CustomAgent(BaseAgent):
     def _execute_with_selectors(self, obs, messages, default_action):
         """
         Execute action generation with tool and compute selection.
+        Uses fixed_tool and fixed_compute if specified, otherwise uses selectors.
         """
         tool_name = 'reactive_actor'
-        if self.use_tool_selector and self.tool_selector:
+        
+        if self.fixed_tool:
+            tool_name = self.fixed_tool
+        elif self.use_tool_selector and self.tool_selector:
             tool_name = self.tool_selector.select_tool(obs, self.plan, messages)
         
         compute_config = {'strategy': 'best_of_n', 'param': 1}
-        if self.use_compute_selector and self.compute_selector:
+        
+        if self.fixed_compute:
+            compute_config = self.fixed_compute
+        elif self.use_compute_selector and self.compute_selector:
             compute_config = self.compute_selector.select_compute_strategy(
                 obs, self.plan, tool_name, messages
             )
         
-        if not self.use_tool_selector and not self.use_compute_selector:
+        if not self.use_tool_selector and not self.use_compute_selector and not self.fixed_tool and not self.fixed_compute:
             return default_action
         
         if not self.reasoners:
@@ -219,7 +267,9 @@ class CustomAgent(BaseAgent):
             metadata = {
                 'tool': tool_name,
                 'compute_strategy': 'direct',
-                'compute_config': compute_config
+                'compute_config': compute_config,
+                'tool_source': 'fixed' if self.fixed_tool else ('selector' if self.use_tool_selector else 'default'),
+                'compute_source': 'fixed' if self.fixed_compute else ('selector' if self.use_compute_selector else 'default')
             }
         else:
             compute_strategy = get_compute_strategy(
@@ -232,6 +282,8 @@ class CustomAgent(BaseAgent):
             )
             
             metadata['tool'] = tool_name
+            metadata['tool_source'] = 'fixed' if self.fixed_tool else ('selector' if self.use_tool_selector else 'default')
+            metadata['compute_source'] = 'fixed' if self.fixed_compute else ('selector' if self.use_compute_selector else 'default')
         
         self.compute_metadata_history.append(metadata)
         
@@ -342,6 +394,8 @@ Output no other text except the action."""
             'use_planner': self.use_planner,
             'use_tool_selector': self.use_tool_selector,
             'use_compute_selector': self.use_compute_selector,
+            'fixed_tool': self.fixed_tool,
+            'fixed_compute': self.fixed_compute,
         }
         
         if self.mode == 'fixed':

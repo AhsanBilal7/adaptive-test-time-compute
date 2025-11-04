@@ -36,7 +36,33 @@ def main(config: DictConfig):
     else:
         now = datetime.now()
         timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
-        run_name = f"{timestamp}_{config.agent.type}_{config.agent.mode}_{config.agent.planning_frequency}_{config.client.model_id.replace('/', '_')}"
+        # run_name = f"{timestamp}_{config.agent.type}_{config.agent.mode}_{config.agent.planning_frequency}_{config.client.model_id.replace('/', '_')}"
+        # Build run_name dynamically with abbreviations
+        parts = [
+            timestamp,
+            config.agent.type,
+            config.agent.mode,
+            f"pf{config.agent.planning_frequency}",  # pf = planning frequency
+        ]
+
+        # Add tool configuration
+        if hasattr(config.agent, 'fixed_tool') and config.agent.fixed_tool:
+            parts.append(f"ft_{config.agent.fixed_tool}")  # ft = fixed tool
+        elif hasattr(config.agent, 'use_tool_selector') and config.agent.use_tool_selector:
+            parts.append("ts")  # ts = tool selector
+
+        # Add compute configuration
+        if hasattr(config.agent, 'fixed_compute') and config.agent.fixed_compute:
+            strategy = config.agent.fixed_compute.get('strategy', 'unknown')
+            param = config.agent.fixed_compute.get('param', 0)
+            parts.append(f"fc_{strategy}_{param}")  # fc = fixed compute
+        elif hasattr(config.agent, 'use_compute_selector') and config.agent.use_compute_selector:
+            parts.append("cs")  # cs = compute selector
+
+        # Add model name
+        parts.append(config.client.model_id.replace('/', '_'))
+
+        run_name = "_".join(parts)
         output_dir = os.path.join(config.eval.output_dir, run_name)
 
         # Create the directory if it doesn't exist

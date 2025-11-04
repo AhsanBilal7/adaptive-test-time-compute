@@ -13,12 +13,15 @@ agent:
   use_planner: true
   use_tool_selector: true
   use_compute_selector: true
-  
+  fixed_tool: null
+  fixed_compute:
+    strategy: null
+    param: null
   # Dataset
   dataset: crafter
 
 eval:
-  output_dir: "results"  # Directory where evaluation results will be saved
+  output_dir: "our_results"  # Directory where evaluation results will be saved
   resume_from: null      # Path to to the incomplete results file to resume an incomplete run
   num_workers: 16        # Number of parallel workers. Increase for faster evaluation if you have enough resources
   num_episodes:          # Minimum number of episodes to run for each environment. You can optionally increase this to get more reliable results
