@@ -2,9 +2,51 @@ from typing import Optional
 
 import crafter
 import gymnasium as gym
-from gymnasium.wrappers import EnvCompatibility
 from balrog.environments.crafter import CrafterLanguageWrapper
 from balrog.environments.wrappers import GymV21CompatibilityV0
+
+
+# ---- fallback shim: works on any Gymnasium version ----
+def _wrap_env_compat(env):
+    """Convert a legacy gym.Env into something gymnasium can wrap."""
+    try:
+        import gym as legacy_gym
+    except ImportError:
+        legacy_gym = None
+
+    # If it's already Gymnasium-compatible, leave it alone
+    if isinstance(env, gym.Env):
+        return env
+    # If it's from old Gym, wrap minimally
+    if legacy_gym is not None and isinstance(env, legacy_gym.Env):
+        class GymCompat(gym.Env):
+            metadata = getattr(env, "metadata", {})
+            render_mode = getattr(env, "render_mode", None)
+
+            def __init__(self, e):
+                self.env = e
+
+            def reset(self, *args, **kwargs):
+                obs = self.env.reset()
+                # Return obs, info pair for Gymnasium style
+                return obs, {}
+
+            def step(self, action):
+                out = self.env.step(action)
+                if len(out) == 4:
+                    obs, reward, done, info = out
+                    return obs, reward, done, False, info
+                return out
+
+            def render(self, *a, **kw):  # noqa
+                return self.env.render(*a, **kw)
+
+            def close(self):  # noqa
+                return self.env.close()
+
+        return GymCompat(env)
+    return env
+# ---------------------------------------------------------
 
 
 def make_crafter_env(env_name, task, config, render_mode: Optional[str] = None):
@@ -22,8 +64,8 @@ def make_crafter_env(env_name, task, config, render_mode: Optional[str] = None):
     # Create raw Crafter env
     env = crafter.Env(**crafter_kwargs)
     
-    # ✅ Wrap for Gymnasium compatibility (converts old gym API to gymnasium API)
-    env = EnvCompatibility(env)
+    # ✅ Wrap for Gymnasium compatibility using fallback shim
+    env = _wrap_env_compat(env)
     
     # Now safe to wrap with custom language wrapper
     env = CrafterLanguageWrapper(
