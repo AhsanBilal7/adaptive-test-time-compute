@@ -84,7 +84,6 @@ class CustomAgent(BaseAgent):
         self.dataset = dataset
         
         self.fixed_tool = fixed_tool
-        self.fixed_compute = fixed_compute
         
         if fixed_tool is not None:
             valid_tools = ['reactive_actor', 'cot', 'heuristic_script']
@@ -96,18 +95,32 @@ class CustomAgent(BaseAgent):
         else:
             self.use_tool_selector = use_tool_selector
         
-        if fixed_compute is not None:
-            if not isinstance(fixed_compute, dict) or 'strategy' not in fixed_compute:
+        # Handle fixed_compute: treat null/empty dict as "not set"
+        if fixed_compute is not None and isinstance(fixed_compute, dict):
+            # Check if it's a valid config (not all null values)
+            has_valid_strategy = 'strategy' in fixed_compute and fixed_compute['strategy'] is not None
+            has_valid_param = 'param' in fixed_compute and fixed_compute['param'] is not None
+            
+            if has_valid_strategy and has_valid_param:
+                # Valid fixed_compute config
+                valid_strategies = ['best_of_n', 'beam_search', 'lookahead']
+                if fixed_compute['strategy'] not in valid_strategies:
+                    raise ValueError(
+                        f"fixed_compute strategy must be one of {valid_strategies}"
+                    )
+                self.use_compute_selector = False
+                self.fixed_compute = fixed_compute
+            elif has_valid_strategy or has_valid_param:
+                # Partial config - error
                 raise ValueError(
-                    "fixed_compute must be a dict with 'strategy' and 'param' keys"
+                    "fixed_compute must have both 'strategy' and 'param' set, or both should be null"
                 )
-            valid_strategies = ['best_of_n', 'beam_search', 'lookahead']
-            if fixed_compute['strategy'] not in valid_strategies:
-                raise ValueError(
-                    f"fixed_compute strategy must be one of {valid_strategies}"
-                )
-            self.use_compute_selector = False
+            else:
+                # All null values - treat as "not set"
+                self.fixed_compute = None
+                self.use_compute_selector = use_compute_selector
         else:
+            self.fixed_compute = None
             self.use_compute_selector = use_compute_selector
         
         self.plan = None
