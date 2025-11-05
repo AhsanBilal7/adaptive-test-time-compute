@@ -1,4 +1,5 @@
 from balrog.client import create_llm_client
+from hydra.utils import instantiate
 
 from ..prompt_builder import create_prompt_builder
 from .chain_of_thought import ChainOfThoughtAgent
@@ -16,6 +17,10 @@ class AgentFactory:
     The `AgentFactory` class is responsible for initializing the appropriate agent type
     based on the provided configuration, which includes setting up the LLM client and
     prompt builder.
+    
+    Supports two modes:
+    1. Legacy mode: Uses `type` field with hardcoded string matching
+    2. Hydra mode: Uses `_target_` field for flexible class instantiation
     """
 
     def __init__(self, config):
@@ -29,9 +34,9 @@ class AgentFactory:
     def create_agent(self):
         """Create an agent instance based on the agent type specified in the configuration.
 
-        The function uses the `config.agent.type` attribute to determine which agent to create.
-        It supports several agent types, including Naive, Chain-of-Thought, Self-Refine, Dummy,
-        and Custom agents.
+        The function supports two modes:
+        1. If `_target_` is specified in config.agent, use Hydra's instantiate for flexible class loading
+        2. Otherwise, fall back to legacy `type` attribute for backward compatibility
 
         Returns:
             Agent: An instance of the selected agent type, configured with the client and prompt builder.
@@ -42,6 +47,19 @@ class AgentFactory:
         client_factory = create_llm_client(self.config.client)
         prompt_builder = create_prompt_builder(self.config.agent)
 
+        # Check if using Hydra's _target_ pattern for flexible instantiation
+        if hasattr(self.config.agent, '_target_') and self.config.agent._target_ is not None:
+            # Use Hydra's instantiate to create the agent from _target_ path
+            agent = instantiate(
+                self.config.agent,
+                client_factory=client_factory,
+                prompt_builder=prompt_builder,
+                _recursive_=False  # Don't recursively instantiate nested configs
+            )
+            print(f"[DEBUG] ✅ Agent instantiated via Hydra _target_: {self.config.agent._target_}")
+            return agent
+
+        # Legacy mode: Use type string for backward compatibility
         if self.config.agent.type == "naive":
             return NaiveAgent(client_factory, prompt_builder)
         elif self.config.agent.type == "cot":

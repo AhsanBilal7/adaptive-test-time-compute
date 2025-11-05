@@ -64,6 +64,9 @@ class CustomAgent(BaseAgent):
         super().__init__(client_factory, prompt_builder)
         self.client = client_factory()
         
+        # Debug confirmation of agent initialization
+        print("[DEBUG] ✅ CustomAgent initialized with multi-tool chaining")
+        
         self.mode = mode
         self.planning_frequency_k = planning_frequency
         
