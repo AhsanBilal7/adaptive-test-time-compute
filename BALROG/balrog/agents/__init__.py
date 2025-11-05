@@ -49,12 +49,34 @@ class AgentFactory:
 
         # Check if using Hydra's _target_ pattern for flexible instantiation
         if hasattr(self.config.agent, '_target_') and self.config.agent._target_ is not None:
-            # Use Hydra's instantiate to create the agent from _target_ path
+            # Extract only CustomAgent-specific parameters from config
+            agent_params = {
+                'client_factory': client_factory,
+                'prompt_builder': prompt_builder,
+            }
+            
+            # Add optional parameters if present in config
+            if hasattr(self.config.agent, 'mode'):
+                agent_params['mode'] = self.config.agent.mode
+            if hasattr(self.config.agent, 'planning_frequency'):
+                agent_params['planning_frequency'] = self.config.agent.planning_frequency
+            if hasattr(self.config.agent, 'use_planner'):
+                agent_params['use_planner'] = self.config.agent.use_planner
+            if hasattr(self.config.agent, 'use_tool_selector'):
+                agent_params['use_tool_selector'] = self.config.agent.use_tool_selector
+            if hasattr(self.config.agent, 'use_compute_selector'):
+                agent_params['use_compute_selector'] = self.config.agent.use_compute_selector
+            if hasattr(self.config.agent, 'fixed_tool'):
+                agent_params['fixed_tool'] = self.config.agent.fixed_tool
+            if hasattr(self.config.agent, 'fixed_compute'):
+                agent_params['fixed_compute'] = self.config.agent.fixed_compute
+            if hasattr(self.config.agent, 'dataset'):
+                agent_params['dataset'] = self.config.agent.dataset
+            
+            # Use Hydra's instantiate with filtered parameters
             agent = instantiate(
-                self.config.agent,
-                client_factory=client_factory,
-                prompt_builder=prompt_builder,
-                _recursive_=False  # Don't recursively instantiate nested configs
+                {'_target_': self.config.agent._target_},
+                **agent_params
             )
             print(f"[DEBUG] ✅ Agent instantiated via Hydra _target_: {self.config.agent._target_}")
             return agent
