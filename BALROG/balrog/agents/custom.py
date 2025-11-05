@@ -397,6 +397,9 @@ class CustomAgent(BaseAgent):
                     'tokens_used': tokens_used
                 })
         
+        # Debug logging for action verification
+        print(f"[DEBUG] Tools used: {selected_tools}, Final action: {action}")
+        
         return action
     
     def _get_dynamic_instruction(self):
