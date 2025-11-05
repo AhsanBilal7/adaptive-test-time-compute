@@ -370,6 +370,18 @@ class Evaluator:
             episode_log["seed"] = seed
             episode_log["agent"] = OmegaConf.to_container(self.config.agent, resolve=True)
             episode_log["client"] = OmegaConf.to_container(self.config.client, resolve=True)
+            
+            # Add tools_used chain per episode (if available)
+            if hasattr(agent, 'get_compute_metadata'):
+                metadata = agent.get_compute_metadata()
+                episode_log["tools_used"] = [m.get("tool", "unknown") for m in metadata]
+                episode_log["tool_metadata"] = metadata
+                
+                # Aggregate token and latency stats
+                total_tokens = sum(m.get("tokens_used", 0) for m in metadata)
+                total_latency = sum(m.get("latency_ms", 0) for m in metadata)
+                episode_log["total_tool_tokens"] = total_tokens
+                episode_log["total_tool_latency_ms"] = total_latency
 
             # Save the episode_log to a JSON file
             json_filename = os.path.join(

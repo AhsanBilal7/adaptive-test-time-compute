@@ -1,5 +1,6 @@
 import re
 import copy
+import time
 from balrog.agents.base import BaseAgent
 
 from balrog.agents.tool_selector import ToolSelector
@@ -281,8 +282,11 @@ class CustomAgent(BaseAgent):
         
         action = default_action
         
-        # Execute tools sequentially
+        # Execute tools sequentially with timing and token tracking
         for tool_name in selected_tools:
+            start_time = time.time()
+            tokens_used = 0
+            
             if tool_name in self.reasoners:
                 # Standard reasoners
                 reasoner = self.reasoners[tool_name]
@@ -293,13 +297,17 @@ class CustomAgent(BaseAgent):
                         action, rule = reasoner.generate_action(context['obs'], context['plan'])
                     elif tool_name == 'cot':
                         action, reasoning = reasoner.generate_action(context['messages'], context['plan'])
+                        tokens_used = len(str(context['messages'])) // 4 + len(str(action)) // 4
                     else:
                         action = reasoner.generate_action(context['messages'], context['plan'])
+                        tokens_used = len(str(context['messages'])) // 4 + len(str(action)) // 4
                     
                     metadata = {
                         'tool': tool_name,
                         'compute_strategy': 'direct',
                         'compute_config': compute_config,
+                        'latency_ms': round((time.time() - start_time) * 1000, 2),
+                        'tokens_used': tokens_used,
                     }
                 else:
                     # Compute strategy execution
@@ -313,6 +321,10 @@ class CustomAgent(BaseAgent):
                     )
                     
                     metadata['tool'] = tool_name
+                    metadata['latency_ms'] = round((time.time() - start_time) * 1000, 2)
+                    # Estimate tokens for N generations
+                    tokens_per_gen = len(str(context['messages'])) // 4 + 50
+                    metadata['tokens_used'] = tokens_per_gen * compute_config['param']
                 
                 # Update context
                 context['last_action'] = action
@@ -325,8 +337,14 @@ class CustomAgent(BaseAgent):
                     context['messages'], context['obs'], context['plan'],
                     context.get('last_action', action)
                 )
+                tokens_used = len(str(context['messages'])) // 4 + 50
                 context['messages'].append({'role': 'system', 'content': str(result)})
-                self.compute_metadata_history.append({'tool': 'numeric_verifier', 'result': result})
+                self.compute_metadata_history.append({
+                    'tool': 'numeric_verifier',
+                    'result': result,
+                    'latency_ms': round((time.time() - start_time) * 1000, 2),
+                    'tokens_used': tokens_used
+                })
                 
             elif tool_name == 'verifier':
                 # General verification
@@ -334,26 +352,50 @@ class CustomAgent(BaseAgent):
                     context['messages'], context['obs'], context['plan'],
                     context.get('last_action', action)
                 )
+                tokens_used = len(str(context['messages'])) // 4 + 50
                 context['messages'].append({'role': 'system', 'content': str(result)})
-                self.compute_metadata_history.append({'tool': 'verifier', 'result': result})
+                self.compute_metadata_history.append({
+                    'tool': 'verifier',
+                    'result': result,
+                    'latency_ms': round((time.time() - start_time) * 1000, 2),
+                    'tokens_used': tokens_used
+                })
                 
             elif tool_name == 'summarizer':
                 # Summarize reasoning chain
                 summary = self.summarizer.summarize(str(context['messages']))
+                tokens_used = len(str(context['messages'])) // 4 + len(summary) // 4
                 context['messages'].append({'role': 'system', 'content': f'Summary: {summary}'})
-                self.compute_metadata_history.append({'tool': 'summarizer', 'summary': summary})
+                self.compute_metadata_history.append({
+                    'tool': 'summarizer',
+                    'summary': summary,
+                    'latency_ms': round((time.time() - start_time) * 1000, 2),
+                    'tokens_used': tokens_used
+                })
                 
             elif tool_name == 'reframe':
                 # Reframe question/plan
                 reframed = self.reframe_tool.reframe(str(context['obs']), context['plan'])
+                tokens_used = len(str(context['obs'])) // 4 + len(reframed) // 4
                 context['messages'].append({'role': 'system', 'content': f'Reframed: {reframed}'})
-                self.compute_metadata_history.append({'tool': 'reframe', 'reframed': reframed})
+                self.compute_metadata_history.append({
+                    'tool': 'reframe',
+                    'reframed': reframed,
+                    'latency_ms': round((time.time() - start_time) * 1000, 2),
+                    'tokens_used': tokens_used
+                })
                 
             elif tool_name == 'web_search':
                 # Web search
                 results = self.web_tool.search(context['obs'])
+                tokens_used = len(str(context['obs'])) // 4 + len(results) // 4
                 context['messages'].append({'role': 'system', 'content': f'Web results: {results}'})
-                self.compute_metadata_history.append({'tool': 'web_search', 'results': results})
+                self.compute_metadata_history.append({
+                    'tool': 'web_search',
+                    'results': results,
+                    'latency_ms': round((time.time() - start_time) * 1000, 2),
+                    'tokens_used': tokens_used
+                })
         
         return action
     
