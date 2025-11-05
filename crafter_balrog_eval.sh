@@ -244,6 +244,7 @@ set -eu
 python eval.py \
   envs.names=crafter \
   agent.type=custom \
+  agent._target_=balrog.agents.custom_agent.CustomAgent \
   agent.mode=dynamic \
   agent.use_planner=true \
   agent.use_tool_selector=true \
