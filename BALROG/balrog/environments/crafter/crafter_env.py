@@ -1,6 +1,8 @@
 from typing import Optional
 
 import crafter
+import gymnasium as gym
+from gymnasium.wrappers import EnvCompatibility
 from balrog.environments.crafter import CrafterLanguageWrapper
 from balrog.environments.wrappers import GymV21CompatibilityV0
 
@@ -17,7 +19,13 @@ def make_crafter_env(env_name, task, config, render_mode: Optional[str] = None):
         if param in crafter_kwargs:
             crafter_kwargs[param] = tuple(crafter_kwargs[param])
 
+    # Create raw Crafter env
     env = crafter.Env(**crafter_kwargs)
+    
+    # ✅ Wrap for Gymnasium compatibility (converts old gym API to gymnasium API)
+    env = EnvCompatibility(env)
+    
+    # Now safe to wrap with custom language wrapper
     env = CrafterLanguageWrapper(
         env,
         task,

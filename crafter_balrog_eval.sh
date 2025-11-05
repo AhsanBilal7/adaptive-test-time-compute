@@ -162,22 +162,22 @@ cd BALROG
 
 
 
-# python eval.py \
-#     envs.names=crafter \
-#     agent.type=custom \
-#     agent.mode=fixed \
-#     agent.planning_frequency=16 \
-#     agent.fixed_tool=cot \
-#     agent.fixed_compute.strategy=best_of_n \
-#     agent.fixed_compute.param=5 \
-#     agent.remember_cot=true \
-#     agent.max_text_history=16 \
-#     eval.output_dir=  "our_results" \
-#     agent.max_image_history=0 \
-#     eval.num_workers=16 \
-#     client.client_name=vllm \
-#     client.model_id="meta-llama/Llama-3.2-1B-Instruct" \
-#     client.base_url="http://0.0.0.0:8080/v1"
+python eval.py \
+    envs.names=crafter \
+    agent.type=custom \
+    agent.mode=fixed \
+    agent.planning_frequency=16 \
+    agent.fixed_tool=cot \
+    agent.fixed_compute.strategy=best_of_n \
+    agent.fixed_compute.param=5 \
+    agent.remember_cot=true \
+    agent.max_text_history=16 \
+    agent.max_image_history=0 \
+    eval.num_workers=16 \
+    eval.output_dir="our_results" \
+    client.client_name=vllm \
+    client.model_id="meta-llama/Llama-3.2-1B-Instruct" \
+    client.base_url="http://0.0.0.0:8080/v1"
 
 # set -eu
 
@@ -241,22 +241,21 @@ set -eu
 
 # Run with multi-tool chaining (use_tool_selector=true, use_compute_selector=true)
 # This enables the full hierarchical gate system with all 8 tools
-python eval.py \
-  envs.names=crafter \
-  agent._target_=balrog.agents.custom.CustomAgent \
-  agent.mode=dynamic \
-  agent.use_planner=true \
-  agent.use_tool_selector=true \
-  agent.use_compute_selector=true \
-  agent.remember_cot=true \
-  agent.max_text_history=16 \
-  agent.max_image_history=0 \
-  agent.dataset=crafter \
-  eval.num_workers=16 \
-  eval.output_dir="multi_tool_results" \
-  client.client_name=vllm \
-  client.model_id="mistralai/Mistral-7B-Instruct-v0.2" \
-  client.base_url="http://0.0.0.0:8080/v1"
+# python eval.py \
+#   envs.names=crafter \
+#   agent._target_=balrog.agents.custom.CustomAgent \
+#   agent.mode=dynamic \
+#   agent.use_planner=true \
+#   agent.use_tool_selector=true \
+#   agent.use_compute_selector=true \
+#   agent.remember_cot=true \
+#   agent.max_text_history=16 \
+#   agent.max_image_history=0 \
+#   eval.num_workers=16 \
+#   eval.output_dir="multi_tool_results" \
+#   client.client_name=vllm \
+#   client.model_id="mistralai/Mistral-7B-Instruct-v0.2" \
+#   client.base_url="http://0.0.0.0:8080/v1"
 
-echo "✅ Multi-tool chaining experiment complete!"
-echo "📊 Analyze results: python visualize_tool_chains.py ./multi_tool_results ./visualizations"
+# echo "✅ Multi-tool chaining experiment complete!"
+# echo "📊 Analyze results: python visualize_tool_chains.py ./multi_tool_results ./visualizations"
