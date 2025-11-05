@@ -287,6 +287,12 @@ class CrafterLanguageWrapper(gym.Wrapper):
         self.skip_items = skip_items
         self.edge_only_items = edge_only_items
 
+    def seed(self, seed=None):
+        """Set the seed for the environment's random number generator."""
+        if hasattr(self.env, 'seed'):
+            return self.env.seed(seed)
+        return None
+
     def get_text_action(self, action):
         return self.language_action_space._values[action]
 
