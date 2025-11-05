@@ -124,7 +124,7 @@ class CustomAgent(BaseAgent):
     
     def _initialize_selectors_and_reasoners(self):
         """
-        Initialize tool selector, compute selector, PRM, and reasoners.
+        Initialize tool selector, compute selector, PRM, and reasoners (including new tools).
         """
         if self.use_tool_selector:
             self.tool_selector = ToolSelector(self.client)
@@ -134,11 +134,24 @@ class CustomAgent(BaseAgent):
         
         self.prm_model = PRMModel(self.client)
         
+        # Import new tools
+        from balrog.agents.reasoners import (
+            NumericVerifier, SummarizerTool, ReframeTool,
+            VerifierTool, WebSearchTool
+        )
+        
         reactive_actor = ReactiveActorReasoner(self.client)
         cot_reasoner = CoTReasoner(self.client)
         
         policy = self._get_policy_for_dataset(self.dataset)
         heuristic_reasoner = HeuristicScriptReasoner(policy)
+        
+        # Initialize new tools
+        self.numeric_verifier = NumericVerifier(self.prm_model)
+        self.verifier = VerifierTool(self.prm_model)
+        self.summarizer = SummarizerTool(self.client)
+        self.reframe_tool = ReframeTool(self.client)
+        self.web_tool = WebSearchTool(self.client)
         
         self.reasoners = {
             'reactive_actor': reactive_actor,
@@ -230,22 +243,26 @@ class CustomAgent(BaseAgent):
     def _execute_with_selectors(self, obs, messages, default_action):
         """
         Execute action generation with tool and compute selection.
-        Uses fixed_tool and fixed_compute if specified, otherwise uses selectors.
+        Now supports multi-tool chaining: sequential execution of multiple tools.
         """
-        tool_name = 'reactive_actor'
-        
+        # Get tool selection (now returns {"tools": [...]})
         if self.fixed_tool:
-            tool_name = self.fixed_tool
+            selected_tools = [self.fixed_tool]
         elif self.use_tool_selector and self.tool_selector:
-            tool_name = self.tool_selector.select_tool(obs, self.plan, messages)
+            tool_selection = self.tool_selector.select_tool(obs, self.plan, messages)
+            selected_tools = tool_selection.get('tools', ['reactive_actor'])
+        else:
+            selected_tools = ['reactive_actor']
         
+        # Get compute config
         compute_config = {'strategy': 'best_of_n', 'param': 1}
         
         if self.fixed_compute:
             compute_config = self.fixed_compute
         elif self.use_compute_selector and self.compute_selector:
+            # Use first tool for compute selection
             compute_config = self.compute_selector.select_compute_strategy(
-                obs, self.plan, tool_name, messages
+                obs, self.plan, selected_tools[0], messages
             )
         
         if not self.use_tool_selector and not self.use_compute_selector and not self.fixed_tool and not self.fixed_compute:
@@ -254,38 +271,89 @@ class CustomAgent(BaseAgent):
         if not self.reasoners:
             return default_action
         
-        reasoner = self.reasoners.get(tool_name, self.reasoners.get('reactive_actor'))
+        # Context for chaining tools
+        context = {
+            'obs': obs,
+            'plan': self.plan,
+            'messages': messages.copy() if messages else [],
+            'last_action': None
+        }
         
-        if compute_config['param'] == 1:
-            if tool_name == 'heuristic_script':
-                action, rule = reasoner.generate_action(obs, self.plan)
-            elif tool_name == 'cot':
-                action, reasoning = reasoner.generate_action(messages, self.plan)
-            else:
-                action = reasoner.generate_action(messages, self.plan)
-            
-            metadata = {
-                'tool': tool_name,
-                'compute_strategy': 'direct',
-                'compute_config': compute_config,
-                'tool_source': 'fixed' if self.fixed_tool else ('selector' if self.use_tool_selector else 'default'),
-                'compute_source': 'fixed' if self.fixed_compute else ('selector' if self.use_compute_selector else 'default')
-            }
-        else:
-            compute_strategy = get_compute_strategy(
-                compute_config['strategy'], 
-                self.prm_model
-            )
-            
-            action, metadata = compute_strategy.execute(
-                reasoner, messages, obs, self.plan, compute_config
-            )
-            
-            metadata['tool'] = tool_name
-            metadata['tool_source'] = 'fixed' if self.fixed_tool else ('selector' if self.use_tool_selector else 'default')
-            metadata['compute_source'] = 'fixed' if self.fixed_compute else ('selector' if self.use_compute_selector else 'default')
+        action = default_action
         
-        self.compute_metadata_history.append(metadata)
+        # Execute tools sequentially
+        for tool_name in selected_tools:
+            if tool_name in self.reasoners:
+                # Standard reasoners
+                reasoner = self.reasoners[tool_name]
+                
+                if compute_config['param'] == 1:
+                    # Direct execution
+                    if tool_name == 'heuristic_script':
+                        action, rule = reasoner.generate_action(context['obs'], context['plan'])
+                    elif tool_name == 'cot':
+                        action, reasoning = reasoner.generate_action(context['messages'], context['plan'])
+                    else:
+                        action = reasoner.generate_action(context['messages'], context['plan'])
+                    
+                    metadata = {
+                        'tool': tool_name,
+                        'compute_strategy': 'direct',
+                        'compute_config': compute_config,
+                    }
+                else:
+                    # Compute strategy execution
+                    compute_strategy = get_compute_strategy(
+                        compute_config['strategy'],
+                        self.prm_model
+                    )
+                    
+                    action, metadata = compute_strategy.execute(
+                        reasoner, context['messages'], context['obs'], context['plan'], compute_config
+                    )
+                    
+                    metadata['tool'] = tool_name
+                
+                # Update context
+                context['last_action'] = action
+                context['messages'].append({'role': 'assistant', 'content': str(action)})
+                self.compute_metadata_history.append(metadata)
+                
+            elif tool_name == 'numeric_verifier':
+                # Numeric verification
+                result = self.numeric_verifier.verify(
+                    context['messages'], context['obs'], context['plan'],
+                    context.get('last_action', action)
+                )
+                context['messages'].append({'role': 'system', 'content': str(result)})
+                self.compute_metadata_history.append({'tool': 'numeric_verifier', 'result': result})
+                
+            elif tool_name == 'verifier':
+                # General verification
+                result = self.verifier.verify(
+                    context['messages'], context['obs'], context['plan'],
+                    context.get('last_action', action)
+                )
+                context['messages'].append({'role': 'system', 'content': str(result)})
+                self.compute_metadata_history.append({'tool': 'verifier', 'result': result})
+                
+            elif tool_name == 'summarizer':
+                # Summarize reasoning chain
+                summary = self.summarizer.summarize(str(context['messages']))
+                context['messages'].append({'role': 'system', 'content': f'Summary: {summary}'})
+                self.compute_metadata_history.append({'tool': 'summarizer', 'summary': summary})
+                
+            elif tool_name == 'reframe':
+                # Reframe question/plan
+                reframed = self.reframe_tool.reframe(str(context['obs']), context['plan'])
+                context['messages'].append({'role': 'system', 'content': f'Reframed: {reframed}'})
+                self.compute_metadata_history.append({'tool': 'reframe', 'reframed': reframed})
+                
+            elif tool_name == 'web_search':
+                # Web search
+                results = self.web_tool.search(context['obs'])
+                context['messages'].append({'role': 'system', 'content': f'Web results: {results}'})
+                self.compute_metadata_history.append({'tool': 'web_search', 'results': results})
         
         return action
     

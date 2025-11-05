@@ -6,7 +6,7 @@ class PRMModel:
     
     def score_response(self, response_text, obs, plan, context=""):
         """
-        Score a response using the PRM model.
+        Score a response using the PRM model with robust error handling.
         
         Args:
             response_text: Response to score
@@ -23,8 +23,13 @@ class PRMModel:
             {"role": "user", "content": prompt}
         ]
         
-        response = self.client.generate(messages)
-        score = self._parse_score(response.completion)
+        try:
+            response = self.client.generate(messages)
+            text = response.completion if hasattr(response, "completion") else str(response)
+            score = self._parse_score(text.strip())
+        except Exception as e:
+            print(f"[PRMModel] Error during scoring: {e}")
+            score = 0.0
         
         self.scoring_history.append({
             'response': response_text,
