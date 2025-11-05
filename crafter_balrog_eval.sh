@@ -243,7 +243,6 @@ set -eu
 # This enables the full hierarchical gate system with all 8 tools
 python eval.py \
   envs.names=crafter \
-  agent.type=custom \
   agent._target_=balrog.agents.custom_agent.CustomAgent \
   agent.mode=dynamic \
   agent.use_planner=true \
