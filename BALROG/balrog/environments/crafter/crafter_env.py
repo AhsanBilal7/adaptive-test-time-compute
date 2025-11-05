@@ -17,7 +17,8 @@ def _wrap_env_compat(env):
     # If it's already Gymnasium-compatible, leave it alone
     if isinstance(env, gym.Env):
         return env
-    # If it's from old Gym, wrap minimally
+    
+    # If it's a legacy gym.Env, wrap minimally
     if legacy_gym is not None and isinstance(env, legacy_gym.Env):
         class GymCompat(gym.Env):
             metadata = getattr(env, "metadata", {})
@@ -25,26 +26,33 @@ def _wrap_env_compat(env):
 
             def __init__(self, e):
                 self.env = e
+                # Expose spaces so downstream wrappers can access them
+                self.observation_space = getattr(e, "observation_space", None)
+                self.action_space = getattr(e, "action_space", None)
+                self.reward_range = getattr(e, "reward_range", (-float("inf"), float("inf")))
 
             def reset(self, *args, **kwargs):
                 obs = self.env.reset()
-                # Return obs, info pair for Gymnasium style
+                # Return obs, info pair for Gymnasium API
                 return obs, {}
 
             def step(self, action):
                 out = self.env.step(action)
                 if len(out) == 4:
                     obs, reward, done, info = out
+                    # Add truncated=False for Gymnasium style
                     return obs, reward, done, False, info
                 return out
 
-            def render(self, *a, **kw):  # noqa
+            def render(self, *a, **kw):
                 return self.env.render(*a, **kw)
 
-            def close(self):  # noqa
+            def close(self):
                 return self.env.close()
 
         return GymCompat(env)
+    
+    # If neither gym nor gymnasium applies, return unchanged
     return env
 # ---------------------------------------------------------
 
