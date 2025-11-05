@@ -38,11 +38,18 @@ def _wrap_env_compat(env):
 
             def step(self, action):
                 out = self.env.step(action)
-                if len(out) == 4:
-                    obs, reward, done, info = out
-                    # Add truncated=False for Gymnasium style
-                    return obs, reward, done, False, info
-                return out
+                
+                # Normalize whatever the underlying env returns
+                if len(out) == 5:
+                    # Gymnasium-style: (obs, reward, terminated, truncated, info)
+                    obs, reward, terminated, truncated, info = out
+                    done = terminated or truncated
+                    return obs, reward, done, info
+                elif len(out) == 4:
+                    # Legacy Gym-style: (obs, reward, done, info)
+                    return out
+                else:
+                    raise ValueError(f"Unexpected number of return values from env.step(): {len(out)}")
 
             def render(self, *a, **kw):
                 return self.env.render(*a, **kw)
