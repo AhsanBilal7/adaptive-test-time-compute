@@ -397,10 +397,45 @@ class CustomAgent(BaseAgent):
                     'tokens_used': tokens_used
                 })
         
-        # Debug logging for action verification
-        print(f"[DEBUG] Tools used: {selected_tools}, Final action: {action}")
+        # Normalize action before returning
+        normalized_action = self._normalize_action(action)
         
-        return action
+        # Debug logging for action verification
+        print(f"[DEBUG] Tools used: {selected_tools}, Final action (normalized): {normalized_action} | raw: {action}")
+        
+        return normalized_action
+    
+    def _normalize_action(self, text):
+        """
+        Normalize action text to valid Crafter action tokens.
+        
+        Args:
+            text: Raw action text from reasoners
+            
+        Returns:
+            str: Normalized action token (noop, left, right, jump, use)
+        """
+        if not text:
+            return "noop"
+        
+        t = str(text).strip().lower()
+        
+        # Handle common phrasing
+        if "left" in t:
+            return "left"
+        if "right" in t:
+            return "right"
+        if "jump" in t:
+            return "jump"
+        if any(k in t for k in ("use", "mine", "attack", "interact", "open", "chop", "craft", "collect", "gather")):
+            return "use"
+        
+        # Accept exact tokens
+        if t in {"noop", "left", "right", "jump", "use"}:
+            return t
+        
+        # Default fallback
+        return "noop"
     
     def _get_dynamic_instruction(self):
         """

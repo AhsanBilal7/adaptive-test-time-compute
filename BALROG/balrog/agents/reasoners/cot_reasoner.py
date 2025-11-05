@@ -52,9 +52,12 @@ Step 3: [Decide on action]
 </reasoning>
 
 After your reasoning, output exactly ONE action from the allowed actions.
+Choose exactly one action from: noop, left, right, jump, use.
+Return only that word on the last line as ACTION: <token>.
+
 Output format:
 <reasoning>YOUR STEP-BY-STEP THINKING</reasoning>
-ACTION: [your chosen action]"""
+ACTION: [noop|left|right|jump|use]"""
     
     def _extract_action_and_reasoning(self, response_text):
         """
