@@ -3,7 +3,7 @@ import re
 from collections import defaultdict
 
 import crafter
-import gym
+import gymnasium as gym
 import numpy as np
 from PIL import Image
 from scipy import ndimage

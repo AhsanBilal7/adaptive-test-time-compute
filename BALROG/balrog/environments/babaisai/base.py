@@ -1,7 +1,7 @@
 from collections import defaultdict
 
 import baba
-import gym
+import gymnasium as gym
 import numpy as np
 from baba.world_object import name_mapping
 from PIL import Image

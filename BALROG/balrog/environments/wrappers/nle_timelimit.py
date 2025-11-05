@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 from nle.env.base import NLE
 
 

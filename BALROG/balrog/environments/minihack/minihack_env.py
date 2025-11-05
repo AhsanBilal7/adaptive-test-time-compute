@@ -1,6 +1,6 @@
 from typing import Optional
 
-import gym
+import gymnasium as gym
 import minihack  # NOQA: F401
 
 from balrog.environments.nle import AutoMore, NLELanguageWrapper

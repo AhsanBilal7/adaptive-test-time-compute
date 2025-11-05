@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 from nle import nle_language_obsv
 from nle.nethack import actions as A
 

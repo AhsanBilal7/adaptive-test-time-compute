@@ -179,47 +179,84 @@ cd BALROG
 #     client.model_id="meta-llama/Llama-3.2-1B-Instruct" \
 #     client.base_url="http://0.0.0.0:8080/v1"
 
+# set -eu
+
+# TOOLS="best_of_n beam_search lookahead"
+# STRATEGIES="heuristic_script cot reactive_actor"
+
+# for tool in $TOOLS; do
+#   for strategy in $STRATEGIES; do
+#     python eval.py \
+#       envs.names=crafter \
+#       agent.type=custom \
+#       agent.mode=fixed \
+#       agent.planning_frequency=16 \
+#       agent.fixed_tool="$tool" \
+#       agent.fixed_compute.strategy="$strategy" \
+#       agent.fixed_compute.param=5 \
+#       agent.remember_cot=true \
+#       agent.max_text_history=16 \
+#       agent.max_image_history=0 \
+#       eval.num_workers=16 \
+#       eval.output_dir="our_results" \
+#       client.client_name=vllm \
+#       client.model_id="meta-llama/Llama-3.2-1B-Instruct" \
+#       client.base_url="http://0.0.0.0:8080/v1"
+#   done
+# done
+# for tool in $TOOLS; do
+#   for strategy in $STRATEGIES; do
+#     python eval.py \
+#       envs.names=crafter \
+#       agent.type=custom \
+#       agent.mode=dynamic \
+#       agent.fixed_tool="$tool" \
+#       agent.fixed_compute.strategy="$strategy" \
+#       agent.fixed_compute.param=5 \
+#       agent.remember_cot=true \
+#       agent.max_text_history=16 \
+#       agent.max_image_history=0 \
+#       eval.num_workers=16 \
+#       eval.output_dir="our_results" \
+#       client.client_name=vllm \
+#       client.model_id="meta-llama/Llama-3.2-1B-Instruct" \
+#       client.base_url="http://0.0.0.0:8080/v1"
+#   done
+# done
+
+
+#####################################################################
+# MULTI-TOOL CHAINING EXPERIMENTS WITH MISTRAL 7B
+# Tests all combinations of compute strategies with multi-tool selection
+# Start vLLM server first:
+# nohup vllm serve "mistralai/Mistral-7B-Instruct-v0.2" \
+#   --host 0.0.0.0 --port 8080 \
+#   --kv-cache-dtype fp8_e5m2 \
+#   --gpu-memory-utilization 0.85 \
+#   --max-model-len 8192 \
+#   > ./vllm_mistral7b.out 2>&1 < /dev/null & echo $! > ./vllm_mistral7b.pid
+#####################################################################
+
 set -eu
 
-TOOLS="best_of_n beam_search lookahead"
-STRATEGIES="heuristic_script cot reactive_actor"
+# Run with multi-tool chaining (use_tool_selector=true, use_compute_selector=true)
+# This enables the full hierarchical gate system with all 8 tools
+python eval.py \
+  envs.names=crafter \
+  agent.type=custom \
+  agent.mode=dynamic \
+  agent.use_planner=true \
+  agent.use_tool_selector=true \
+  agent.use_compute_selector=true \
+  agent.remember_cot=true \
+  agent.max_text_history=16 \
+  agent.max_image_history=0 \
+  agent.dataset=crafter \
+  eval.num_workers=16 \
+  eval.output_dir="multi_tool_results" \
+  client.client_name=vllm \
+  client.model_id="mistralai/Mistral-7B-Instruct-v0.2" \
+  client.base_url="http://0.0.0.0:8080/v1"
 
-for tool in $TOOLS; do
-  for strategy in $STRATEGIES; do
-    python eval.py \
-      envs.names=crafter \
-      agent.type=custom \
-      agent.mode=fixed \
-      agent.planning_frequency=16 \
-      agent.fixed_tool="$tool" \
-      agent.fixed_compute.strategy="$strategy" \
-      agent.fixed_compute.param=5 \
-      agent.remember_cot=true \
-      agent.max_text_history=16 \
-      agent.max_image_history=0 \
-      eval.num_workers=16 \
-      eval.output_dir="our_results" \
-      client.client_name=vllm \
-      client.model_id="meta-llama/Llama-3.2-1B-Instruct" \
-      client.base_url="http://0.0.0.0:8080/v1"
-  done
-done
-for tool in $TOOLS; do
-  for strategy in $STRATEGIES; do
-    python eval.py \
-      envs.names=crafter \
-      agent.type=custom \
-      agent.mode=dynamic \
-      agent.fixed_tool="$tool" \
-      agent.fixed_compute.strategy="$strategy" \
-      agent.fixed_compute.param=5 \
-      agent.remember_cot=true \
-      agent.max_text_history=16 \
-      agent.max_image_history=0 \
-      eval.num_workers=16 \
-      eval.output_dir="our_results" \
-      client.client_name=vllm \
-      client.model_id="meta-llama/Llama-3.2-1B-Instruct" \
-      client.base_url="http://0.0.0.0:8080/v1"
-  done
-done
+echo "✅ Multi-tool chaining experiment complete!"
+echo "📊 Analyze results: python visualize_tool_chains.py ./multi_tool_results ./visualizations"
