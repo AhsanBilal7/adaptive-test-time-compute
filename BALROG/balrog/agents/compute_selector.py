@@ -1,15 +1,72 @@
-import re
+import json
+from typing import Dict, Any
+
+_VALID_STRATEGIES = ("best_of_n", "beam_search", "lookahead")
+# Sensible global clamps; beam width and lookahead depth are interpreted per strategy.
+_DEFAULT = {"strategy": "best_of_n", "param": 1}
+_CLAMPS = {
+    "best_of_n": (1, 64),     # N samples
+    "beam_search": (2, 16),   # beam width
+    "lookahead": (1, 4),      # rollout depth k
+}
 
 
 class ComputeSelector:
     
     def __init__(self, client):
         self.client = client
-        self.compute_selection_history = []
+        self.compute_selection_history = []  # list[Dict[str,Any]]
+    
+    def _build_prompt(self, obs, plan, tool_name, history_messages) -> list:
+        """
+        Returns a messages list for a JSON-only reply.
+        """
+        sys = {
+            "role": "system",
+            "content": (
+                "You are a selector that returns STRICT JSON for test-time compute.\n"
+                "Respond with a single JSON object ONLY, no prose, no markdown.\n"
+                "Schema: {\"strategy\": \"best_of_n|beam_search|lookahead\", \"param\": int}."
+            )
+        }
+        user = {
+            "role": "user",
+            "content": (
+                "Decide a compute strategy for the next action.\n"
+                f"Tool: {tool_name}\n"
+                f"Plan: {plan if plan else '(none)'}\n"
+                f"Observation: {str(obs)[:800]}\n\n"
+                "Guidelines:\n"
+                "- If easy/clear path: best_of_n with param in [2, 8].\n"
+                "- If branching and verifier guidance needed: beam_search with beam in [2, 8].\n"
+                "- If misranking risk and deeper evaluation helps: lookahead with k in [1, 3].\n"
+                "Return JSON ONLY. Example: {\"strategy\":\"best_of_n\",\"param\":4}"
+            )
+        }
+        # Keep only the last message block from history to avoid bloat; you can expand if you like.
+        msgs = [sys] + (history_messages[-3:] if history_messages else []) + [user]
+        return msgs
+    
+    def _parse_and_validate(self, text: str) -> Dict[str, Any]:
+        try:
+            obj = json.loads(text.strip())
+            strategy = str(obj.get("strategy", _DEFAULT["strategy"])).strip()
+            param = int(obj.get("param", _DEFAULT["param"]))
+        except Exception:
+            return dict(_DEFAULT)
+
+        if strategy not in _VALID_STRATEGIES:
+            strategy = _DEFAULT["strategy"]
+        lo, hi = _CLAMPS[strategy]
+        if not (lo <= param <= hi):
+            # clamp into allowed window
+            param = max(lo, min(hi, max(1, param)))
+
+        return {"strategy": strategy, "param": param}
     
     def select_compute_strategy(self, obs, plan, tool_name, history_messages):
         """
-        Ask the master LLM to select which compute strategy to use.
+        Returns {'strategy': str, 'param': int} (validated + clamped).
         
         Args:
             obs: Current observation
@@ -18,92 +75,24 @@ class ComputeSelector:
             history_messages: Conversation history
             
         Returns:
-            dict: Compute strategy config with 'strategy' and 'params'
+            dict: Compute strategy config with 'strategy' and 'param'
         """
-        instruction = self._get_compute_selection_prompt(tool_name)
-        
-        messages = history_messages.copy()
-        if messages and messages[-1].role == "user":
-            messages[-1].content += "\n\n" + instruction
-        
-        response = self.client.generate(messages)
-        compute_config = self._parse_compute_selection(response.completion)
-        
-        self.compute_selection_history.append(compute_config['strategy'])
-        
-        return compute_config
-    
-    def _get_compute_selection_prompt(self, tool_name):
-        """
-        Generate prompt for compute strategy selection.
-        
-        Returns:
-            str: Compute strategy selection instruction
-        """
-        return f"""You have selected the '{tool_name}' reasoning tool. Now select a compute strategy:
+        messages = self._build_prompt(obs, plan, tool_name, history_messages or [])
+        try:
+            resp = self.client.generate(messages)
+            text = resp.completion if hasattr(resp, "completion") else str(resp)
+        except Exception:
+            selection = dict(_DEFAULT)
+        else:
+            selection = self._parse_and_validate(text)
 
-1. best_of_n - Generate N responses and select the best using PRM scoring
-   - Good for high-quality single outputs
-   - Moderate computational cost
-   - Recommended N: 3-5
-
-2. beam_search - Maintain top-K candidates at each step using PRM scoring
-   - Good for multi-step reasoning
-   - Higher computational cost
-   - Recommended beam_width: 3-5
-
-3. lookahead - Simulate future steps and score with PRM
-   - Good for planning-heavy tasks
-   - Highest computational cost
-   - Recommended depth: 2-3
-
-Consider:
-- Task difficulty (harder → more compute)
-- Available resources (limited → best_of_n with small N)
-- Multi-step reasoning needs (yes → beam_search or lookahead)
-
-Output your selection in the following format:
-<compute>STRATEGY:PARAM_VALUE</compute>
-Examples:
-- <compute>best_of_n:5</compute>
-- <compute>beam_search:3</compute>
-- <compute>lookahead:2</compute>"""
-    
-    def _parse_compute_selection(self, response_text):
-        """
-        Extract compute strategy from LLM response.
-        
-        Args:
-            response_text: LLM response
-            
-        Returns:
-            dict: Compute configuration
-        """
-        compute_pattern = r'<compute>(.*?)</compute>'
-        compute_match = re.search(compute_pattern, response_text, re.IGNORECASE | re.DOTALL)
-        
-        if compute_match:
-            compute_str = compute_match.group(1).strip().lower()
-            
-            if ':' in compute_str:
-                strategy, param = compute_str.split(':', 1)
-                strategy = strategy.strip()
-                try:
-                    param_value = int(param.strip())
-                except ValueError:
-                    param_value = 3
-                
-                valid_strategies = ['best_of_n', 'beam_search', 'lookahead']
-                if strategy in valid_strategies:
-                    return {
-                        'strategy': strategy,
-                        'param': param_value
-                    }
-        
-        return {
-            'strategy': 'best_of_n',
-            'param': 3
-        }
+        # record immutable snapshot
+        self.compute_selection_history.append({
+            "tool": tool_name,
+            "plan_present": bool(plan),
+            "selection": dict(selection),
+        })
+        return selection
     
     def get_compute_distribution(self):
         """
@@ -112,24 +101,14 @@ Examples:
         Returns:
             dict: Compute strategy statistics
         """
-        if not self.compute_selection_history:
-            return {}
-        
-        strategy_counts = {}
-        for strategy in self.compute_selection_history:
-            strategy_counts[strategy] = strategy_counts.get(strategy, 0) + 1
-        
-        total = len(self.compute_selection_history)
-        strategy_distribution = {
-            strategy: count / total 
-            for strategy, count in strategy_counts.items()
-        }
-        
-        return {
-            'strategy_counts': strategy_counts,
-            'strategy_distribution': strategy_distribution,
-            'total_selections': total
-        }
+        counts = {k: 0 for k in _VALID_STRATEGIES}
+        for ev in self.compute_selection_history:
+            s = ev.get("selection", {}).get("strategy")
+            if s in counts:
+                counts[s] += 1
+        total = sum(counts.values())
+        dist = {k: (counts[k] / total if total else 0.0) for k in counts}
+        return {"strategy_counts": counts, "strategy_distribution": dist, "total_selections": total}
     
     def reset(self):
         """
