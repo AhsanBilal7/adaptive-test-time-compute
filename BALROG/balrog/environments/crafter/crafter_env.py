@@ -30,6 +30,13 @@ def _wrap_env_compat(env):
                 self.observation_space = getattr(e, "observation_space", None)
                 self.action_space = getattr(e, "action_space", None)
                 self.reward_range = getattr(e, "reward_range", (-float("inf"), float("inf")))
+            
+            def __getattr__(self, name):
+                """Forward attribute access to the underlying environment."""
+                if name.startswith('_'):
+                    # Forward private attributes (like _player, _world, etc.) to wrapped env
+                    return getattr(self.env, name)
+                raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
             def reset(self, *args, **kwargs):
                 obs = self.env.reset()
