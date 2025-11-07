@@ -11,7 +11,22 @@ from balrog.agents.reasoners.cot_reasoner import CoTReasoner
 from balrog.agents.reasoners.heuristic_script_reasoner import HeuristicScriptReasoner
 from balrog.agents.policies.crafter_policy import CrafterPolicy
 from balrog.agents.compute_strategies import get_compute_strategy
+from collections.abc import Mapping
 
+def _get(obj, key, default=None):
+    if obj is None:
+        return default
+    # attribute-style (e.g., SimpleNamespace, OmegaConf nodes)
+    val = getattr(obj, key, None)
+    if val is not None:
+        return val
+    # mapping-style (dict, DictConfig)
+    if isinstance(obj, Mapping):
+        return obj.get(key, default)
+    return default
+
+def _provided(x):
+    return x is not None and not (isinstance(x, str) and x.strip() == "")
 
 class CustomAgent(BaseAgent):
     """
@@ -95,30 +110,28 @@ class CustomAgent(BaseAgent):
         else:
             self.use_tool_selector = use_tool_selector
         
-        # Handle fixed_compute: treat null/empty dict as "not set"
-        if fixed_compute is not None and isinstance(fixed_compute, dict):
-            # Check if it's a valid config (not all null values)
-            has_valid_strategy = 'strategy' in fixed_compute and fixed_compute['strategy'] is not None
-            has_valid_param = 'param' in fixed_compute and fixed_compute['param'] is not None
-            
-            if has_valid_strategy and has_valid_param:
-                # Valid fixed_compute config
-                valid_strategies = ['best_of_n', 'beam_search', 'lookahead']
-                if fixed_compute['strategy'] not in valid_strategies:
-                    raise ValueError(
-                        f"fixed_compute strategy must be one of {valid_strategies}"
-                    )
-                self.use_compute_selector = False
-                self.fixed_compute = fixed_compute
-            elif has_valid_strategy or has_valid_param:
-                # Partial config - error
-                raise ValueError(
-                    "fixed_compute must have both 'strategy' and 'param' set, or both should be null"
-                )
-            else:
-                # All null values - treat as "not set"
-                self.fixed_compute = None
-                self.use_compute_selector = use_compute_selector
+        self.use_compute_selector = use_compute_selector
+        self.fixed_compute = None  # default
+
+        fc = fixed_compute  # could be dict, DictConfig, or object with attrs
+
+        strategy = _get(fc, "strategy")
+        param    = _get(fc, "param")
+
+        if _provided(strategy) and _provided(param):
+            valid_strategies = ["best_of_n", "beam_search", "lookahead"]
+            if strategy not in valid_strategies:
+                raise ValueError(f"fixed_compute strategy must be one of {valid_strategies}, got {strategy}")
+            # (optional) coerce numeric param if it's a numeric-looking string
+            if isinstance(param, str):
+                try:
+                    param = int(param) if param.isdigit() else float(param)
+                except ValueError:
+                    pass
+            self.fixed_compute = {"strategy": strategy, "param": param}
+            self.use_compute_selector = False
+        elif _provided(strategy) or _provided(param):
+            raise ValueError("fixed_compute must provide BOTH 'strategy' and 'param', or neither.")
         else:
             self.fixed_compute = None
             self.use_compute_selector = use_compute_selector
@@ -274,6 +287,9 @@ class CustomAgent(BaseAgent):
         # Get compute config
         compute_config = {'strategy': 'best_of_n', 'param': 1}
         
+
+        print(f"[DEBUG] Fixed Tool: {self.fixed_tool}, Use Tool selector: {self.use_tool_selector}")  # Debugging line
+        print(f"[DEBUG] Fixed Compute: {self.fixed_compute}, Use compute selector: {self.use_compute_selector}")  # Debugging line
         if self.fixed_compute:
             compute_config = self.fixed_compute
         elif self.use_compute_selector and self.compute_selector:

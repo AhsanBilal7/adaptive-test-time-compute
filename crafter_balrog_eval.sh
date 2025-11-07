@@ -162,22 +162,7 @@ cd BALROG
 
 
 
-python eval.py \
-    envs.names=crafter \
-    agent.type=custom \
-    agent.mode=fixed \
-    agent.planning_frequency=16 \
-    agent.fixed_tool=cot \
-    agent.fixed_compute.strategy=best_of_n \
-    agent.fixed_compute.param=5 \
-    agent.remember_cot=true \
-    agent.max_text_history=16 \
-    agent.max_image_history=0 \
-    eval.num_workers=16 \
-    eval.output_dir="our_results" \
-    client.client_name=vllm \
-    client.model_id="meta-llama/Llama-3.2-1B-Instruct" \
-    client.base_url="http://0.0.0.0:8080/v1"
+
 
 # set -eu
 
@@ -259,3 +244,43 @@ set -eu
 
 # echo "✅ Multi-tool chaining experiment complete!"
 # echo "📊 Analyze results: python visualize_tool_chains.py ./multi_tool_results ./visualizations"
+
+
+
+
+# python eval.py \
+#   envs.names=crafter \
+#   agent._target_=balrog.agents.custom.CustomAgent \
+#   agent.mode=dynamic \
+#   agent.use_planner=true \
+#   agent.use_tool_selector=true \
+#   agent.use_compute_selector=true \
+#   agent.remember_cot=true \
+#   agent.max_text_history=16 \
+#   agent.max_image_history=0 \
+#   eval.num_workers=1 \
+#   eval.output_dir="multi_tool_results" \
+#   client.client_name=ollama \
+#   client.base_url="http://localhost:11434/v1" \
+#   client.model_id="gemma2:9b"
+
+
+    # agent.type=custom \
+
+python eval.py \
+    envs.names=crafter \
+  agent._target_=balrog.agents.custom.CustomAgent \
+    agent.mode=fixed \
+    agent.planning_frequency=16 \
+    agent.fixed_tool=cot \
+    agent.fixed_compute.strategy=best_of_n \
+    agent.fixed_compute.param=5 \
+    agent.remember_cot=true \
+    agent.max_text_history=16 \
+    agent.max_image_history=0 \
+    eval.num_workers=16 \
+    eval.output_dir="multi_tool_results" \
+  client.client_name=ollama \
+  client.base_url="http://localhost:11434/v1" \
+  client.model_id="qwen2.5:7b-instruct"
+  # client.model_id="gemma2:9b"

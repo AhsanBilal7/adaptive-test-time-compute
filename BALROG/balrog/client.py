@@ -66,6 +66,20 @@ class LLMClientWrapper:
         """
         raise NotImplementedError("This method should be overridden by subclasses")
 
+    def generate_with_structured(self, messages, schema):
+        """Generate a structured JSON response from the LLM given a list of messages and a schema.
+
+        This method should be overridden by subclasses.
+
+        Args:
+            messages (list): A list of messages to send to the LLM.
+            schema (dict): JSON schema defining the expected output structure.
+
+        Returns:
+            LLMResponse: The response from the LLM with JSON content.
+        """
+        raise NotImplementedError("This method should be overridden by subclasses")
+
     def execute_with_retries(self, func, *args, **kwargs):
         """Execute a function with retries upon failure.
 
@@ -213,6 +227,420 @@ class OpenAIWrapper(LLMClientWrapper):
             output_tokens=response.usage.completion_tokens,
             reasoning=None,
         )
+
+    def generate_with_structured(self, messages, schema):
+        """Generate a structured JSON response from the OpenAI API.
+
+        Args:
+            messages (list): A list of message objects.
+            schema (dict): JSON schema defining the expected output structure.
+
+        Returns:
+            LLMResponse: The response from the OpenAI API with JSON content.
+        """
+        self._initialize_client()
+        converted_messages = self.convert_messages(messages)
+
+        def api_call():
+            # Create kwargs for the API call
+            api_kwargs = {
+                "messages": converted_messages,
+                "model": self.model_id,
+                "max_tokens": self.client_kwargs.get("max_tokens", 1024),
+            }
+
+            # Only include temperature if it's not None
+            temperature = self.client_kwargs.get("temperature")
+            if temperature is not None:
+                api_kwargs["temperature"] = temperature
+
+            # Add structured output configuration based on client
+            if self.client_name.lower() in ["openai", "nvidia", "xai"]:
+                # Use response_format for OpenAI-style structured outputs
+                api_kwargs["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "response",
+                        "strict": True,
+                        "schema": schema
+                    }
+                }
+            else:
+                # For vLLM, use simpler JSON mode with schema in prompt
+                api_kwargs["response_format"] = {"type": "json_object"}
+                # Add schema to system message
+                schema_instruction = f"\n\nYou must respond with valid JSON matching this schema:\n{json.dumps(schema, indent=2)}"
+                if converted_messages and converted_messages[0]["role"] == "system":
+                    converted_messages[0]["content"][0]["text"] += schema_instruction
+                else:
+                    converted_messages.insert(0, {
+                        "role": "system",
+                        "content": [{"type": "text", "text": f"You are a helpful assistant that responds in JSON format.{schema_instruction}"}]
+                    })
+                api_kwargs["messages"] = converted_messages
+
+            return self.client.chat.completions.create(**api_kwargs)
+
+        response = self.execute_with_retries(api_call)
+
+        return LLMResponse(
+            model_id=self.model_id,
+            completion=response.choices[0].message.content.strip(),
+            stop_reason=response.choices[0].finish_reason,
+            input_tokens=response.usage.prompt_tokens,
+            output_tokens=response.usage.completion_tokens,
+            reasoning=None,
+        )
+
+
+class OllamaWrapper(LLMClientWrapper):
+    """Wrapper for interacting with Ollama's API using native ollama library.
+    
+    Uses the native Python ollama library for better integration and structured outputs.
+    Supports both OpenAI-compatible API and native ollama library methods.
+    """
+
+    def __init__(self, client_config):
+        """Initialize the OllamaWrapper with the given configuration.
+
+        Args:
+            client_config: Configuration object containing client-specific settings.
+        """
+        super().__init__(client_config)
+        self._initialized = False
+        self._use_native = False  # Flag to determine which API to use
+
+    def _initialize_client(self):
+        """Initialize the Ollama client if not already initialized."""
+        if not self._initialized:
+            # Try to use native ollama library first
+            try:
+                import ollama
+                import socket
+                
+                self.ollama = ollama
+                self._use_native = True
+                
+                # Check if Ollama daemon is running
+                if not self._is_ollama_available():
+                    logger.warning("Ollama daemon not reachable. Falling back to OpenAI-compatible API.")
+                    self._use_native = False
+                else:
+                    # Ensure model is available
+                    self._ensure_model()
+                    self._initialized = True
+                    return
+                    
+            except ImportError:
+                logger.debug("Native ollama library not found. Using OpenAI-compatible API.")
+                self._use_native = False
+            except Exception as e:
+                logger.warning(f"Error initializing native ollama: {e}. Falling back to OpenAI-compatible API.")
+                self._use_native = False
+            
+            # Fallback to OpenAI-compatible API
+            if not self.base_url or not self.base_url.strip():
+                self.base_url = "http://localhost:11434/v1"
+            
+            self.client = OpenAI(api_key="ollama", base_url=self.base_url)
+            self._initialized = True
+
+    def _is_ollama_available(self) -> bool:
+        """Check if Ollama daemon is running."""
+        import socket
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(2)
+            result = sock.connect_ex(('127.0.0.1', 11434))
+            sock.close()
+            if result == 0:
+                return True
+        except Exception:
+            pass
+        
+        # Try listing models as backup check
+        try:
+            self.ollama.list()
+            return True
+        except Exception:
+            pass
+        
+        return False
+
+    def _ensure_model(self):
+        """Pull model if not already available."""
+        try:
+            models = self.ollama.list()
+            available = {m["model"] for m in models.get("models", [])}
+            
+            # Check if exact model name exists
+            if self.model_id in available:
+                return
+            
+            # Check if model exists with :latest suffix
+            model_base = self.model_id.split(':')[0]
+            for model in available:
+                if model.startswith(model_base):
+                    logger.info(f"Using existing model: {model}")
+                    self.model_id = model  # Use the available variant
+                    return
+            
+            # Model not found, try to pull it
+            logger.info(f"Model {self.model_id} not found locally. Pulling...")
+            for _ in self.ollama.pull(self.model_id, stream=True):
+                pass
+            logger.info(f"Model {self.model_id} ready.")
+            
+        except Exception as e:
+            logger.warning(f"Could not verify model availability: {e}")
+            logger.info(f"Will attempt to use model anyway: {self.model_id}")
+
+    def _build_options(self) -> dict:
+        """Build options dict for native Ollama API."""
+        opts = {
+            "temperature": self.client_kwargs.get("temperature", 0.7),
+            "num_ctx": self.client_kwargs.get("max_tokens", 1024)
+        }
+        
+        if "seed" in self.client_kwargs and self.client_kwargs["seed"] is not None:
+            opts["seed"] = self.client_kwargs["seed"]
+        
+        return opts
+
+    def convert_messages(self, messages):
+        """Convert messages to the format expected by the Ollama API.
+
+        Args:
+            messages (list): A list of message objects or dictionaries.
+
+        Returns:
+            list: A list of messages formatted for the Ollama API.
+        """
+        converted_messages = []
+        
+        for msg in messages:
+            # Handle both dict and object formats
+            if isinstance(msg, dict):
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                attachment = msg.get("attachment")
+            else:
+                role = getattr(msg, "role", "user")
+                content = getattr(msg, "content", "")
+                attachment = getattr(msg, "attachment", None)
+            
+            if self._use_native:
+                # Native ollama format - simpler
+                converted_messages.append({
+                    "role": role,
+                    "content": content
+                })
+                # Note: Native ollama doesn't use the image format in messages
+                # Images are passed separately in the API call
+            else:
+                # OpenAI-compatible format
+                new_content = [{"type": "text", "text": content}]
+                
+                if attachment is not None:
+                    new_content.append(process_image_openai(attachment))
+                
+                # Merge with previous message if same role and alternate_roles is True
+                if self.alternate_roles and converted_messages and converted_messages[-1]["role"] == role:
+                    if isinstance(converted_messages[-1]["content"], list):
+                        converted_messages[-1]["content"].extend(new_content)
+                    else:
+                        converted_messages[-1]["content"] = [
+                            {"type": "text", "text": converted_messages[-1]["content"]}
+                        ] + new_content
+                else:
+                    converted_messages.append({"role": role, "content": new_content})
+                
+        return converted_messages
+
+    def _extract_system_and_user_messages(self, messages):
+        """Extract system and user messages from message list.
+        
+        Returns messages in format [system_messages] + [conversation_messages]
+        where system messages come first.
+        
+        Args:
+            messages (list): List of message dicts with 'role' and 'content'
+            
+        Returns:
+            tuple: (system_messages, other_messages)
+        """
+        system_messages = []
+        other_messages = []
+        
+        for msg in messages:
+            if msg["role"] == "system":
+                system_messages.append(msg)
+            else:
+                other_messages.append(msg)
+        
+        return system_messages, other_messages
+
+    def generate(self, messages):
+        """Generate a response from the Ollama API given a list of messages.
+
+        Args:
+            messages (list): A list of message objects or dictionaries.
+
+        Returns:
+            LLMResponse: The response from the Ollama API.
+        """
+        self._initialize_client()
+        converted_messages = self.convert_messages(messages)
+
+        if self._use_native:
+            # Use native ollama library
+            try:
+                response = self.ollama.chat(
+                    model=self.model_id,
+                    messages=converted_messages,
+                    stream=False,
+                    options=self._build_options(),
+                    keep_alive=self.client_kwargs.get("keep_alive", "5m")
+                )
+                
+                return LLMResponse(
+                    model_id=self.model_id,
+                    completion=response["message"]["content"].strip(),
+                    stop_reason="stop",  # Native API doesn't provide this
+                    input_tokens=response.get("prompt_eval_count", 0),
+                    output_tokens=response.get("eval_count", 0),
+                    reasoning=None,
+                )
+            except Exception as e:
+                logger.error(f"Native ollama generation failed: {e}")
+                raise
+        else:
+            # Use OpenAI-compatible API
+            def api_call():
+                api_kwargs = {
+                    "messages": converted_messages,
+                    "model": self.model_id,
+                    "max_tokens": self.client_kwargs.get("max_tokens", 1024),
+                }
+
+                temperature = self.client_kwargs.get("temperature")
+                if temperature is not None:
+                    api_kwargs["temperature"] = temperature
+
+                return self.client.chat.completions.create(**api_kwargs)
+
+            response = self.execute_with_retries(api_call)
+
+            return LLMResponse(
+                model_id=self.model_id,
+                completion=response.choices[0].message.content.strip(),
+                stop_reason=response.choices[0].finish_reason,
+                input_tokens=response.usage.prompt_tokens,
+                output_tokens=response.usage.completion_tokens,
+                reasoning=None,
+            )
+
+    def generate_with_structured(self, messages, schema):
+        """Generate a structured JSON response from the Ollama API.
+
+        Messages should be in format [system_message] + [user_message] for best results.
+        The schema is passed directly to Ollama's format parameter for native structured outputs.
+
+        Args:
+            messages (list): A list of message objects or dictionaries.
+                           Format: [{"role": "system", "content": "..."}, {"role": "user", "content": "..."}]
+            schema (dict): JSON schema defining the expected output structure.
+
+        Returns:
+            LLMResponse: The response from the Ollama API with JSON content.
+        """
+        self._initialize_client()
+        converted_messages = self.convert_messages(messages)
+
+        if self._use_native:
+            # Use native ollama library with structured output
+            try:
+                # Separate system and other messages
+                system_messages, other_messages = self._extract_system_and_user_messages(converted_messages)
+                
+                # Combine: system messages first, then the rest
+                final_messages = system_messages + other_messages
+                
+                response = self.ollama.chat(
+                    model=self.model_id,
+                    messages=final_messages,
+                    stream=False,
+                    format=schema,  # Pass schema directly to format parameter
+                    options=self._build_options(),
+                    keep_alive=self.client_kwargs.get("keep_alive", "5m")
+                )
+                
+                return LLMResponse(
+                    model_id=self.model_id,
+                    completion=response["message"]["content"].strip(),
+                    stop_reason="stop",
+                    input_tokens=response.get("prompt_eval_count", 0),
+                    output_tokens=response.get("eval_count", 0),
+                    reasoning=None,
+                )
+            except Exception as e:
+                logger.error(f"Native ollama structured generation failed: {e}")
+                raise
+        else:
+            # Use OpenAI-compatible API with fallback mechanisms
+            def api_call():
+                api_kwargs = {
+                    "messages": converted_messages,
+                    "model": self.model_id,
+                    "max_tokens": self.client_kwargs.get("max_tokens", 1024),
+                }
+
+                temperature = self.client_kwargs.get("temperature")
+                if temperature is not None:
+                    api_kwargs["temperature"] = temperature
+
+                # Try beta parse API first
+                try:
+                    api_kwargs["response_format"] = schema
+                    return self.client.beta.chat.completions.parse(**api_kwargs)
+                except (AttributeError, Exception) as e:
+                    logger.debug(f"Beta API not available: {e}. Trying fallback.")
+                    
+                    # Fallback 1: extra_body with format
+                    try:
+                        api_kwargs.pop("response_format", None)
+                        api_kwargs["extra_body"] = {"format": schema}
+                        return self.client.chat.completions.create(**api_kwargs)
+                    except Exception as e2:
+                        logger.warning(f"extra_body fallback failed: {e2}. Using JSON mode.")
+                        
+                        # Fallback 2: JSON mode with schema in prompt
+                        api_kwargs.pop("extra_body", None)
+                        api_kwargs["response_format"] = {"type": "json_object"}
+                        schema_instruction = f"\n\nYou must respond with valid JSON matching this schema:\n{json.dumps(schema, indent=2)}"
+                        if converted_messages and converted_messages[0]["role"] == "system":
+                            if isinstance(converted_messages[0]["content"], list):
+                                converted_messages[0]["content"][0]["text"] += schema_instruction
+                            else:
+                                converted_messages[0]["content"] += schema_instruction
+                        else:
+                            converted_messages.insert(0, {
+                                "role": "system",
+                                "content": [{"type": "text", "text": f"You are a helpful assistant that responds in JSON format.{schema_instruction}"}]
+                            })
+                        api_kwargs["messages"] = converted_messages
+                        return self.client.chat.completions.create(**api_kwargs)
+
+            response = self.execute_with_retries(api_call)
+
+            return LLMResponse(
+                model_id=self.model_id,
+                completion=response.choices[0].message.content.strip(),
+                stop_reason=response.choices[0].finish_reason,
+                input_tokens=response.usage.prompt_tokens,
+                output_tokens=response.usage.completion_tokens,
+                reasoning=None,
+            )
 
 
 class GoogleGenerativeAIWrapper(LLMClientWrapper):
@@ -412,6 +840,95 @@ class GoogleGenerativeAIWrapper(LLMClientWrapper):
                 reasoning=None,
             )
 
+    def generate_with_structured(self, messages, schema):
+        """Generate a structured JSON response from the Generative AI API.
+
+        Args:
+            messages (list): A list of message objects.
+            schema (dict): JSON schema defining the expected output structure.
+
+        Returns:
+            LLMResponse: The response from the Generative AI API with JSON content.
+        """
+        self._initialize_client()
+        converted_messages = self.convert_messages(messages)
+
+        # Create generation config with JSON response format
+        client_kwargs = {
+            "max_output_tokens": self.client_kwargs.get("max_tokens", 1024),
+            "response_mime_type": "application/json",
+        }
+
+        # Only include temperature if it's not None
+        temperature = self.client_kwargs.get("temperature")
+        if temperature is not None:
+            client_kwargs["temperature"] = temperature
+
+        # Add schema if supported
+        if schema:
+            client_kwargs["response_schema"] = schema
+
+        generation_config = genai.types.GenerationConfig(**client_kwargs)
+
+        def api_call():
+            response = self.model.generate_content(
+                converted_messages,
+                generation_config=generation_config,
+            )
+            # Attempt to extract completion immediately after API call
+            completion = self.extract_completion(response)
+            # Return both response and completion if successful
+            return response, completion
+
+        try:
+            # Execute the API call and extraction together with retries
+            response, completion = self.execute_with_retries(api_call)
+
+            # Check if the successful response contains an empty completion
+            if not completion or completion.strip() == "":
+                logger.warning(f"Gemini returned an empty completion for model {self.model_id}. Returning default empty response.")
+                return LLMResponse(
+                    model_id=self.model_id,
+                    completion="{}",
+                    stop_reason="empty_response",
+                    input_tokens=getattr(response.usage_metadata, "prompt_token_count", 0) if response and getattr(response, "usage_metadata", None) else 0,
+                    output_tokens=getattr(response.usage_metadata, "candidates_token_count", 0) if response and getattr(response, "usage_metadata", None) else 0,
+                    reasoning=None,
+                )
+            else:
+                # If completion is not empty, return the normal response
+                return LLMResponse(
+                    model_id=self.model_id,
+                    completion=completion,
+                    stop_reason=(
+                        getattr(response.candidates[0], "finish_reason", "unknown")
+                        if response and getattr(response, "candidates", [])
+                        else "unknown"
+                    ),
+                    input_tokens=(
+                        getattr(response.usage_metadata, "prompt_token_count", 0)
+                        if response and getattr(response, "usage_metadata", None)
+                        else 0
+                    ),
+                    output_tokens=(
+                        getattr(response.usage_metadata, "candidates_token_count", 0)
+                        if response and getattr(response, "usage_metadata", None)
+                        else 0
+                    ),
+                    reasoning=None,
+                )
+        except Exception as e:
+            logger.error(f"API call failed after {self.max_retries} retries: {e}. Returning empty JSON.")
+            # Return a default response indicating failure
+            return LLMResponse(
+                model_id=self.model_id,
+                completion="{}",
+                stop_reason="error_max_retries",
+                input_tokens=0,
+                output_tokens=0,
+                reasoning=None,
+            )
+
 
 class ClaudeWrapper(LLMClientWrapper):
     """Wrapper for interacting with Anthropic's Claude API."""
@@ -490,6 +1007,66 @@ class ClaudeWrapper(LLMClientWrapper):
             reasoning=None,
         )
 
+    def generate_with_structured(self, messages, schema):
+        """Generate a structured JSON response from the Claude API.
+
+        Note: Claude doesn't have native structured output support, so we use
+        prompt engineering to request JSON format.
+
+        Args:
+            messages (list): A list of message objects.
+            schema (dict): JSON schema defining the expected output structure.
+
+        Returns:
+            LLMResponse: The response from the Claude API with JSON content.
+        """
+        self._initialize_client()
+        
+        # Add JSON schema instruction to the last user message
+        schema_instruction = f"\n\nPlease respond with valid JSON matching this schema:\n```json\n{json.dumps(schema, indent=2)}\n```\nRespond only with the JSON object, no additional text."
+        
+        # Create a modified messages list
+        modified_messages = []
+        for i, msg in enumerate(messages):
+            if i == len(messages) - 1 and msg.role == "user":
+                # Add schema instruction to last user message
+                modified_msg = type(msg)(
+                    role=msg.role,
+                    content=msg.content + schema_instruction,
+                    attachment=msg.attachment if hasattr(msg, 'attachment') else None
+                )
+                modified_messages.append(modified_msg)
+            else:
+                modified_messages.append(msg)
+        
+        converted_messages = self.convert_messages(modified_messages)
+
+        def api_call():
+            # Create kwargs for the API call
+            api_kwargs = {
+                "messages": converted_messages,
+                "model": self.model_id,
+                "max_tokens": self.client_kwargs.get("max_tokens", 1024),
+            }
+
+            # Only include temperature if it's not None
+            temperature = self.client_kwargs.get("temperature")
+            if temperature is not None:
+                api_kwargs["temperature"] = temperature
+
+            return self.client.messages.create(**api_kwargs)
+
+        response = self.execute_with_retries(api_call)
+
+        return LLMResponse(
+            model_id=self.model_id,
+            completion=response.content[0].text.strip(),
+            stop_reason=response.stop_reason,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+            reasoning=None,
+        )
+
 
 def create_llm_client(client_config):
     """
@@ -504,7 +1081,10 @@ def create_llm_client(client_config):
 
     def client_factory():
         client_name_lower = client_config.client_name.lower()
-        if "openai" in client_name_lower or "vllm" in client_name_lower or "nvidia" in client_name_lower or "xai" in client_name_lower:
+        if "ollama" in client_name_lower:
+            # Ollama has its own dedicated wrapper
+            return OllamaWrapper(client_config)
+        elif "openai" in client_name_lower or "vllm" in client_name_lower or "nvidia" in client_name_lower or "xai" in client_name_lower:
             # NVIDIA and XAI use OpenAI-compatible API, so we use the OpenAI wrapper
             return OpenAIWrapper(client_config)
         elif "gemini" in client_name_lower:

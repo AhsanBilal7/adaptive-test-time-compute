@@ -7,12 +7,63 @@ class CoTReasoner:
         self.client = client
         self.reasoning_history = []
     
+    def _get_message_role(self, msg):
+        """
+        Get role from message (handles both dict and object formats).
+        
+        Args:
+            msg: Message (dict or object)
+            
+        Returns:
+            str: Role of the message
+        """
+        if isinstance(msg, dict):
+            return msg.get("role", "")
+        else:
+            return getattr(msg, "role", "")
+    
+    def _get_message_content(self, msg):
+        """
+        Get content from message (handles both dict and object formats).
+        
+        Args:
+            msg: Message (dict or object)
+            
+        Returns:
+            str: Content of the message
+        """
+        if isinstance(msg, dict):
+            return msg.get("content", "")
+        else:
+            return getattr(msg, "content", "")
+    
+    def _set_message_content(self, msg, content):
+        """
+        Set content for message (handles both dict and object formats).
+        
+        Args:
+            msg: Message (dict or object)
+            content: New content
+            
+        Returns:
+            Modified message (dict format)
+        """
+        if isinstance(msg, dict):
+            msg["content"] = content
+            return msg
+        else:
+            # Convert object to dict format
+            return {
+                "role": getattr(msg, "role", "user"),
+                "content": content
+            }
+    
     def generate_action(self, messages, plan=None):
         """
         Generate action using chain-of-thought reasoning.
         
         Args:
-            messages: Conversation history
+            messages: Conversation history (list of dicts or objects)
             plan: Current plan (optional)
             
         Returns:
@@ -21,12 +72,26 @@ class CoTReasoner:
         instruction = self._get_cot_instruction(plan)
         
         messages_copy = messages.copy()
-        if messages_copy and messages_copy[-1].role == "user":
-            messages_copy[-1].content += "\n\n" + instruction
+        # print("messages_copy before adding instruction:", messages_copy)  # Debugging line
+        
+        # Add instruction to last user message
+        if messages_copy:
+            last_msg = messages_copy[-1]
+            last_role = self._get_message_role(last_msg)
+            
+            if last_role == "user":
+                current_content = self._get_message_content(last_msg)
+                new_content = current_content + "\n\n" + instruction
+                messages_copy[-1] = self._set_message_content(last_msg, new_content)
         
         response = self.client.generate(messages_copy)
         action, reasoning = self._extract_action_and_reasoning(response.completion)
         
+        print("messages_copy after adding instruction:", messages_copy)  # Debugging line
+        print("CoT Reasoner response:", response.completion)  # Debugging line
+        print("CoT Reasoner action:", action)  # Debugging line
+        print("CoT Reasoner reasoning:", reasoning)  # Debugging line
+
         self.reasoning_history.append(reasoning)
         
         return action, reasoning

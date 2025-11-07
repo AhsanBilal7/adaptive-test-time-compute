@@ -1,6 +1,6 @@
 import json
 from typing import Dict, Any
-
+from balrog.schemas import DecisionPayload
 _VALID_STRATEGIES = ("best_of_n", "beam_search", "lookahead")
 # Sensible global clamps; beam width and lookahead depth are interpreted per strategy.
 _DEFAULT = {"strategy": "best_of_n", "param": 1}
@@ -36,15 +36,36 @@ class ComputeSelector:
                 f"Tool: {tool_name}\n"
                 f"Plan: {plan if plan else '(none)'}\n"
                 f"Observation: {str(obs)[:800]}\n\n"
-                "Guidelines:\n"
-                "- If easy/clear path: best_of_n with param in [2, 8].\n"
-                "- If branching and verifier guidance needed: beam_search with beam in [2, 8].\n"
-                "- If misranking risk and deeper evaluation helps: lookahead with k in [1, 3].\n"
-                "Return JSON ONLY. Example: {\"strategy\":\"best_of_n\",\"param\":4}"
+                "Guidelines (READ CAREFULLY, THEN OUTPUT JSON ONLY):\n"
+                "1) Derive signals from Plan+Observation (string checks are fine):\n"
+                "   - branching_signals: count of terms { 'branch', 'option', 'alternative', 'path', 'fork', 'subtask', 'search', 'explore' } + patterns like lists (', and', ';', numbered steps >1).\n"
+                "   - verifier_signal: 1 if Plan mentions 'verify', 'verifier', 'check', 'constraint', or if a verifier/scorer tool is available; else 0.\n"
+                "   - ranking_risk: 1 if the task is to choose/compare/order/rank/evaluate candidates or mentions 'tie', 'score', 'tradeoff'; else 0.\n"
+                "   - clarity: 1 if instructions are single-step and unambiguous (no branching_signals, no question marks, no 'maybe', 'unsure', 'unclear'); else 0.\n"
+                "\n"
+                "2) Decide strategy by this table (first rule that matches wins):\n"
+                "   A) IF branching_signals >= 2 OR (branching_signals >= 1 AND verifier_signal == 1) → strategy='beam_search' (use beam ∈ [2,8]).\n"
+                "   B) ELSE IF ranking_risk == 1 → strategy='lookahead' (use k ∈ [1,3]).\n"
+                "   C) ELSE IF clarity == 1 → strategy='best_of_n' (use n ∈ [2,8]).\n"
+                "   D) ELSE → strategy='beam_search'.\n"
+                "\n"
+                "3) Parameter selection (be conservative by default):\n"
+                "   - beam_search: beam = 2 if candidates <= 3; 4 if 4–6; 6–8 if >6 or high uncertainty.\n"
+                "   - best_of_n: n = 2 if trivial; 4 if moderate; 6–8 if errors are costly or observation is noisy.\n"
+                "   - lookahead: k = 1 for light re-ranking; 2 if close call; 3 if ties/near-ties persist.\n"
+                "\n"
+                "4) Hard constraints to avoid defaulting to best_of_n:\n"
+                "   - You MAY NOT choose best_of_n if branching_signals >= 1.\n"
+                "   - Prefer beam_search over best_of_n whenever verifier_signal == 1.\n"
+                "   - Prefer lookahead over best_of_n whenever ranking_risk == 1.\n"
+                "\n"
+                "Return JSON ONLY with no explanation. Example: {\"strategy\":\"beam_search\",\"param\":4}\n"
             )
         }
+
         # Keep only the last message block from history to avoid bloat; you can expand if you like.
-        msgs = [sys] + (history_messages[-3:] if history_messages else []) + [user]
+        # msgs = [sys] + (history_messages[-3:] if history_messages else []) + [user]
+        msgs = [sys] + [user]
         return msgs
     
     def _parse_and_validate(self, text: str) -> Dict[str, Any]:
@@ -79,8 +100,10 @@ class ComputeSelector:
         """
         messages = self._build_prompt(obs, plan, tool_name, history_messages or [])
         try:
-            resp = self.client.generate(messages)
+            # resp = self.client.generate(messages)
+            resp = self.client.generate_with_structured(messages, DecisionPayload.model_json_schema())
             text = resp.completion if hasattr(resp, "completion") else str(resp)
+            print("Compute selection response text:", text)  # Debugging line
         except Exception:
             selection = dict(_DEFAULT)
         else:

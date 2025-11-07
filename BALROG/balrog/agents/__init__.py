@@ -31,6 +31,8 @@ class AgentFactory:
         """
         self.config = config
 
+    def _is_provided(self, x):
+        return x is not None and not (isinstance(x, str) and x.strip() == "")
     def create_agent(self):
         """Create an agent instance based on the agent type specified in the configuration.
 
@@ -50,28 +52,38 @@ class AgentFactory:
         # Check if using Hydra's _target_ pattern for flexible instantiation
         if hasattr(self.config.agent, '_target_') and self.config.agent._target_ is not None:
             # Extract only CustomAgent-specific parameters from config
+            # Extract only CustomAgent-specific parameters from config
             agent_params = {
-                'client_factory': client_factory,
-                'prompt_builder': prompt_builder,
+                "client_factory": client_factory,
+                "prompt_builder": prompt_builder,
             }
-            
-            # Add optional parameters if present in config
-            if hasattr(self.config.agent, 'mode'):
-                agent_params['mode'] = self.config.agent.mode
-            if hasattr(self.config.agent, 'planning_frequency'):
-                agent_params['planning_frequency'] = self.config.agent.planning_frequency
-            if hasattr(self.config.agent, 'use_planner'):
-                agent_params['use_planner'] = self.config.agent.use_planner
-            if hasattr(self.config.agent, 'use_tool_selector'):
-                agent_params['use_tool_selector'] = self.config.agent.use_tool_selector
-            if hasattr(self.config.agent, 'use_compute_selector'):
-                agent_params['use_compute_selector'] = self.config.agent.use_compute_selector
-            if hasattr(self.config.agent, 'fixed_tool'):
-                agent_params['fixed_tool'] = self.config.agent.fixed_tool
-            if hasattr(self.config.agent, 'fixed_compute'):
-                agent_params['fixed_compute'] = self.config.agent.fixed_compute
-            if hasattr(self.config.agent, 'dataset'):
-                agent_params['dataset'] = self.config.agent.dataset
+
+            # Add simple optional fields if present
+            for k in (
+                "mode",
+                "planning_frequency",
+                "use_planner",
+                "use_tool_selector",
+                "use_compute_selector",
+                "fixed_tool",
+                "dataset",
+            ):
+                if hasattr(self.config.agent, k):
+                    agent_params[k] = getattr(self.config.agent, k)
+
+            # fixed_compute: expect self.config.agent.fixed_compute.strategy/param
+            fc = getattr(self.config.agent, "fixed_compute", None)
+            strategy = getattr(fc, "strategy", None) if fc is not None else None
+            param    = getattr(fc, "param", None)    if fc is not None else None
+
+            agent_params["fixed_compute"] = (
+                {"strategy": strategy, "param": param}
+                if (strategy is not None and param is not None)
+                else None
+            )
+
+            # print(f"[DEBUG] Fixed compute: {strategy}, {param}")  # Debugging line
+            # print(f"{agent_params["fixed_compute"]}")  # Debugging line
             
             # Use Hydra's instantiate with filtered parameters
             agent = instantiate(
