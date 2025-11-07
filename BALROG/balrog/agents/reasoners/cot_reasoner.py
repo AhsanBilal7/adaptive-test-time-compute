@@ -1,3 +1,4 @@
+from email.mime import base
 import re
 
 
@@ -107,22 +108,23 @@ class CoTReasoner:
         if plan:
             base += " and plan"
         
-        return f"""{base}, then think step-by-step about what to do next.
+        return f"""{base}, then decide the best next move based on the current environment, inventory, and visible entities.
 
-Output your reasoning in the following format:
-<reasoning>
-Step 1: [Analyze current situation]
-Step 2: [Consider options]
-Step 3: [Decide on action]
-</reasoning>
+        After your reasoning, output exactly ONE action from the allowed actions below.
+        Choose exactly one action from:
+        Noop, Move West, Move East, Move North, Move South,
+        Do, Sleep,
+        Place Stone, Place Table, Place Furnace, Place Plant,
+        Make Wood Pickaxe, Make Stone Pickaxe, Make Iron Pickaxe,
+        Make Wood Sword, Make Stone Sword, Make Iron Sword.
 
-After your reasoning, output exactly ONE action from the allowed actions.
-Choose exactly one action from: noop, left, right, jump, use.
-Return only that word on the last line as ACTION: <token>.
+        Output format:
+        <reasoning>
+        [Your brief step-by-step thought process]
+        </reasoning>
+        ACTION: <action_name>
 
-Output format:
-<reasoning>YOUR STEP-BY-STEP THINKING</reasoning>
-ACTION: [noop|left|right|jump|use]"""
+        Return only the reasoning and the ACTION line, nothing else."""
     
     def _extract_action_and_reasoning(self, response_text):
         """

@@ -440,34 +440,80 @@ class CustomAgent(BaseAgent):
     def _normalize_action(self, text):
         """
         Normalize action text to valid Crafter action tokens.
-        
+
         Args:
             text: Raw action text from reasoners
-            
+
         Returns:
-            str: Normalized action token (noop, left, right, jump, use)
+            str: Normalized action token from Crafter's valid action set
         """
         if not text:
-            return "noop"
-        
+            return "Noop"
+
         t = str(text).strip().lower()
-        
-        # Handle common phrasing
-        if "left" in t:
-            return "left"
-        if "right" in t:
-            return "right"
-        if "jump" in t:
-            return "jump"
-        if any(k in t for k in ("use", "mine", "attack", "interact", "open", "chop", "craft", "collect", "gather")):
-            return "use"
-        
-        # Accept exact tokens
-        if t in {"noop", "left", "right", "jump", "use"}:
-            return t
-        
+
+        valid_actions = {
+            "noop": "Noop",
+            "move west": "Move West",
+            "move east": "Move East",
+            "move north": "Move North",
+            "move south": "Move South",
+            "do": "Do",
+            "sleep": "Sleep",
+            "place stone": "Place Stone",
+            "place table": "Place Table",
+            "place furnace": "Place Furnace",
+            "place plant": "Place Plant",
+            "make wood pickaxe": "Make Wood Pickaxe",
+            "make stone pickaxe": "Make Stone Pickaxe",
+            "make iron pickaxe": "Make Iron Pickaxe",
+            "make wood sword": "Make Wood Sword",
+            "make stone sword": "Make Stone Sword",
+            "make iron sword": "Make Iron Sword",
+        }
+
+        # Direct match
+        if t in valid_actions:
+            return valid_actions[t]
+
+        # Handle common synonyms / shorthand
+        if "left" in t or "west" in t:
+            return "Move West"
+        if "right" in t or "east" in t:
+            return "Move East"
+        if "up" in t or "north" in t:
+            return "Move North"
+        if "down" in t or "south" in t:
+            return "Move South"
+        if "sleep" in t or "rest" in t:
+            return "Sleep"
+        if "stone" in t and "place" in t:
+            return "Place Stone"
+        if "table" in t and "place" in t:
+            return "Place Table"
+        if "furnace" in t and "place" in t:
+            return "Place Furnace"
+        if "plant" in t and "place" in t:
+            return "Place Plant"
+        if "wood" in t and "pickaxe" in t:
+            return "Make Wood Pickaxe"
+        if "stone" in t and "pickaxe" in t:
+            return "Make Stone Pickaxe"
+        if "iron" in t and "pickaxe" in t:
+            return "Make Iron Pickaxe"
+        if "wood" in t and "sword" in t:
+            return "Make Wood Sword"
+        if "stone" in t and "sword" in t:
+            return "Make Stone Sword"
+        if "iron" in t and "sword" in t:
+            return "Make Iron Sword"
+        if any(k in t for k in ("use", "interact", "mine", "attack", "collect", "gather", "craft", "build", "drink")):
+            return "Do"
+
         # Default fallback
-        return "noop"
+        return "Noop"
+
+
     
     def _get_dynamic_instruction(self):
         """

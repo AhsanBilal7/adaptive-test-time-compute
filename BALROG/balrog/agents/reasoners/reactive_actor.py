@@ -1,6 +1,5 @@
 import re
 
-
 class ReactiveActorReasoner:
     
     def __init__(self, client):
@@ -100,9 +99,13 @@ class ReactiveActorReasoner:
         
         return f"""{base}, choose exactly ONE action from the allowed actions.
 
-React quickly and directly to the current situation.
+                Respond quickly and instinctively to the current environment based on what you see.
 
-Output only the action, nothing else."""
+                Output format:
+                ACTION: [Noop|Move West|Move East|Move North|Move South|Do|Sleep|Place Stone|Place Table|Place Furnace|Place Plant|Make Wood Pickaxe|Make Stone Pickaxe|Make Iron Pickaxe|Make Wood Sword|Make Stone Sword|Make Iron Sword]
+
+                Output only the action line, nothing else."""
+
     
     def _extract_action(self, response_text):
         """
