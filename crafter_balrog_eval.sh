@@ -262,7 +262,7 @@ python eval.py \
   eval.output_dir="multi_tool_results" \
   client.client_name=ollama \
   client.base_url="http://localhost:11434/v1" \
-  client.model_id="gemma2:9b"
+  client.model_id="gemma3n:e4b"
 
 
     # agent.type=custom \
@@ -284,3 +284,7 @@ python eval.py \
 #   client.base_url="http://localhost:11434/v1" \
 #   client.model_id="qwen2.5:7b-instruct"
   # client.model_id="gemma2:9b"
+
+
+
+

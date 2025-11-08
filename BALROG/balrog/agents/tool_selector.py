@@ -39,7 +39,7 @@ class ToolSelector:
             "content": (
                 "Select one or more tools to execute SEQUENTIALLY for this step.\n"
                 f"Plan: {plan if plan else '(none)'}\n"
-                f"Observation: {str(obs)[:800]}\n\n"
+                f"Observation: {str(obs)}\n\n"
                 "Available tools:\n"
                 "reactive_actor  – Fast, direct action selection\n"
                 "cot             – Step-by-step reasoning\n"
@@ -79,8 +79,8 @@ class ToolSelector:
             )
         }
 
-        # msgs = [sys] + (history_messages[-3:] if history_messages else []) + [user]
-        msgs = [sys] + [user]
+        msgs = [sys] + (history_messages[-3:] if history_messages else []) + [user]
+        # msgs = [sys] + [user]
         return msgs
     
     def _parse_and_validate(self, text: str) -> Dict[str, Any]:

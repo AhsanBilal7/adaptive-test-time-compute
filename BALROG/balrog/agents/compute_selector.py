@@ -35,7 +35,7 @@ class ComputeSelector:
                 "Decide a compute strategy for the next action.\n"
                 f"Tool: {tool_name}\n"
                 f"Plan: {plan if plan else '(none)'}\n"
-                f"Observation: {str(obs)[:800]}\n\n"
+                f"Observation: {str(obs)}\n\n"
                 "Guidelines (READ CAREFULLY, THEN OUTPUT JSON ONLY):\n"
                 "1) Derive signals from Plan+Observation (string checks are fine):\n"
                 "   - branching_signals: count of terms { 'branch', 'option', 'alternative', 'path', 'fork', 'subtask', 'search', 'explore' } + patterns like lists (', and', ';', numbered steps >1).\n"
@@ -64,8 +64,8 @@ class ComputeSelector:
         }
 
         # Keep only the last message block from history to avoid bloat; you can expand if you like.
-        # msgs = [sys] + (history_messages[-3:] if history_messages else []) + [user]
-        msgs = [sys] + [user]
+        msgs = [sys] + (history_messages[-3:] if history_messages else []) + [user]
+        # msgs = [sys] + [user]
         return msgs
     
     def _parse_and_validate(self, text: str) -> Dict[str, Any]:

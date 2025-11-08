@@ -316,7 +316,6 @@ class OllamaWrapper(LLMClientWrapper):
             # Try to use native ollama library first
             try:
                 import ollama
-                import socket
                 
                 self.ollama = ollama
                 self._use_native = True
@@ -336,14 +335,11 @@ class OllamaWrapper(LLMClientWrapper):
                 self._use_native = False
             except Exception as e:
                 logger.warning(f"Error initializing native ollama: {e}. Falling back to OpenAI-compatible API.")
-                self._use_native = False
             
             # Fallback to OpenAI-compatible API
             if not self.base_url or not self.base_url.strip():
                 self.base_url = "http://localhost:11434/v1"
             
-            self.client = OpenAI(api_key="ollama", base_url=self.base_url)
-            self._initialized = True
 
     def _is_ollama_available(self) -> bool:
         """Check if Ollama daemon is running."""
@@ -492,53 +488,25 @@ class OllamaWrapper(LLMClientWrapper):
         self._initialize_client()
         converted_messages = self.convert_messages(messages)
 
-        if self._use_native:
-            # Use native ollama library
-            try:
-                response = self.ollama.chat(
-                    model=self.model_id,
-                    messages=converted_messages,
-                    stream=False,
-                    options=self._build_options(),
-                    keep_alive=self.client_kwargs.get("keep_alive", "5m")
-                )
-                
-                return LLMResponse(
-                    model_id=self.model_id,
-                    completion=response["message"]["content"].strip(),
-                    stop_reason="stop",  # Native API doesn't provide this
-                    input_tokens=response.get("prompt_eval_count", 0),
-                    output_tokens=response.get("eval_count", 0),
-                    reasoning=None,
-                )
-            except Exception as e:
-                logger.error(f"Native ollama generation failed: {e}")
-                raise
-        else:
-            # Use OpenAI-compatible API
-            def api_call():
-                api_kwargs = {
-                    "messages": converted_messages,
-                    "model": self.model_id,
-                    "max_tokens": self.client_kwargs.get("max_tokens", 1024),
-                }
 
-                temperature = self.client_kwargs.get("temperature")
-                if temperature is not None:
-                    api_kwargs["temperature"] = temperature
+        response = self.ollama.chat(
+            model=self.model_id,
+            messages=converted_messages,
+            options=self._build_options(),
+            keep_alive="30m"  # Keep model loaded for 30 minutes
+        )
+        
+            # stream=False,
+        # keep_alive=self.client_kwargs.get("keep_alive", "5m")
+        return LLMResponse(
+            model_id=self.model_id,
+            completion=response["message"]["content"].strip(),
+            stop_reason="stop",  # Native API doesn't provide this
+            input_tokens=response.get("prompt_eval_count", 0),
+            output_tokens=response.get("eval_count", 0),
+            reasoning=None,
+        )
 
-                return self.client.chat.completions.create(**api_kwargs)
-
-            response = self.execute_with_retries(api_call)
-
-            return LLMResponse(
-                model_id=self.model_id,
-                completion=response.choices[0].message.content.strip(),
-                stop_reason=response.choices[0].finish_reason,
-                input_tokens=response.usage.prompt_tokens,
-                output_tokens=response.usage.completion_tokens,
-                reasoning=None,
-            )
 
     def generate_with_structured(self, messages, schema):
         """Generate a structured JSON response from the Ollama API.
@@ -557,91 +525,35 @@ class OllamaWrapper(LLMClientWrapper):
         self._initialize_client()
         converted_messages = self.convert_messages(messages)
 
-        if self._use_native:
-            # Use native ollama library with structured output
-            try:
-                # Separate system and other messages
-                system_messages, other_messages = self._extract_system_and_user_messages(converted_messages)
-                
-                # Combine: system messages first, then the rest
-                final_messages = system_messages + other_messages
-                
-                response = self.ollama.chat(
-                    model=self.model_id,
-                    messages=final_messages,
-                    stream=False,
-                    format=schema,  # Pass schema directly to format parameter
-                    options=self._build_options(),
-                    keep_alive=self.client_kwargs.get("keep_alive", "5m")
-                )
-                
-                return LLMResponse(
-                    model_id=self.model_id,
-                    completion=response["message"]["content"].strip(),
-                    stop_reason="stop",
-                    input_tokens=response.get("prompt_eval_count", 0),
-                    output_tokens=response.get("eval_count", 0),
-                    reasoning=None,
-                )
-            except Exception as e:
-                logger.error(f"Native ollama structured generation failed: {e}")
-                raise
-        else:
-            # Use OpenAI-compatible API with fallback mechanisms
-            def api_call():
-                api_kwargs = {
-                    "messages": converted_messages,
-                    "model": self.model_id,
-                    "max_tokens": self.client_kwargs.get("max_tokens", 1024),
-                }
+        # if self._use_native:
+        # Use native ollama library with structured output
+        # Separate system and other messages
+        system_messages, other_messages = self._extract_system_and_user_messages(converted_messages)
+        
+        # Combine: system messages first, then the rest
+        final_messages = system_messages + other_messages
+        # print("====================================================")
+        # print(final_messages)
+        # print("====================================================")
 
-                temperature = self.client_kwargs.get("temperature")
-                if temperature is not None:
-                    api_kwargs["temperature"] = temperature
-
-                # Try beta parse API first
-                try:
-                    api_kwargs["response_format"] = schema
-                    return self.client.beta.chat.completions.parse(**api_kwargs)
-                except (AttributeError, Exception) as e:
-                    logger.debug(f"Beta API not available: {e}. Trying fallback.")
-                    
-                    # Fallback 1: extra_body with format
-                    try:
-                        api_kwargs.pop("response_format", None)
-                        api_kwargs["extra_body"] = {"format": schema}
-                        return self.client.chat.completions.create(**api_kwargs)
-                    except Exception as e2:
-                        logger.warning(f"extra_body fallback failed: {e2}. Using JSON mode.")
-                        
-                        # Fallback 2: JSON mode with schema in prompt
-                        api_kwargs.pop("extra_body", None)
-                        api_kwargs["response_format"] = {"type": "json_object"}
-                        schema_instruction = f"\n\nYou must respond with valid JSON matching this schema:\n{json.dumps(schema, indent=2)}"
-                        if converted_messages and converted_messages[0]["role"] == "system":
-                            if isinstance(converted_messages[0]["content"], list):
-                                converted_messages[0]["content"][0]["text"] += schema_instruction
-                            else:
-                                converted_messages[0]["content"] += schema_instruction
-                        else:
-                            converted_messages.insert(0, {
-                                "role": "system",
-                                "content": [{"type": "text", "text": f"You are a helpful assistant that responds in JSON format.{schema_instruction}"}]
-                            })
-                        api_kwargs["messages"] = converted_messages
-                        return self.client.chat.completions.create(**api_kwargs)
-
-            response = self.execute_with_retries(api_call)
-
-            return LLMResponse(
-                model_id=self.model_id,
-                completion=response.choices[0].message.content.strip(),
-                stop_reason=response.choices[0].finish_reason,
-                input_tokens=response.usage.prompt_tokens,
-                output_tokens=response.usage.completion_tokens,
-                reasoning=None,
-            )
-
+        response = self.ollama.chat(
+            model=self.model_id,
+            messages=final_messages,
+            format=schema,  # Pass schema directly to format parameter
+            options=self._build_options(),
+            keep_alive="30m"  # Keep model loaded for 30 minutes
+        )
+        
+        # stream=False,
+        # keep_alive=self.client_kwargs.get("keep_alive", "5m")
+        return LLMResponse(
+            model_id=self.model_id,
+            completion=response["message"]["content"].strip(),
+            stop_reason="stop",
+            input_tokens=response.get("prompt_eval_count", 0),
+            output_tokens=response.get("eval_count", 0),
+            reasoning=None,
+        )
 
 class GoogleGenerativeAIWrapper(LLMClientWrapper):
     """Wrapper for interacting with Google's Generative AI API."""
