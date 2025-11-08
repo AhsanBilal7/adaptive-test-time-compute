@@ -1,5 +1,6 @@
 from typing import List, Literal
 from pydantic import BaseModel, Field, ConfigDict, model_validator
+from typing import Optional, Dict, List, Any
 
 
 Tool = Literal[
@@ -31,3 +32,13 @@ class DecisionPayload(BaseModel):
         if self.strategy == "lookahead" and not (1 <= self.param <= 3):
             raise ValueError("param must be in [1,3] for lookahead")
         return self
+    
+
+
+
+# Pydantic model for structured final answer output
+class FinalAnswer(BaseModel):
+    """Structured output for final answer."""
+    answer: int = Field(description="The final numerical answer or simplified expression")
+    confidence: Optional[float] = Field(default=None, description="Confidence score between 0 and 1")
+    model_config = ConfigDict(extra="forbid")

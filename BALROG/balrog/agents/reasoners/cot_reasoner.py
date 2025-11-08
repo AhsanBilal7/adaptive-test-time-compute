@@ -88,10 +88,10 @@ class CoTReasoner:
         response = self.client.generate(messages_copy)
         action, reasoning = self._extract_action_and_reasoning(response.completion)
         
-        print("messages_copy after adding instruction:", messages_copy)  # Debugging line
-        print("CoT Reasoner response:", response.completion)  # Debugging line
-        print("CoT Reasoner action:", action)  # Debugging line
-        print("CoT Reasoner reasoning:", reasoning)  # Debugging line
+        # print("messages_copy after adding instruction:", messages_copy)  # Debugging line
+        # print("CoT Reasoner response:", response.completion)  # Debugging line
+        # print("CoT Reasoner action:", action)  # Debugging line
+        # print("CoT Reasoner reasoning:", reasoning)  # Debugging line
 
         self.reasoning_history.append(reasoning)
         
