@@ -148,7 +148,8 @@ class MathAgent:
         fixed_compute: Optional[Dict] = None,
         remember_cot: bool = True,
         max_text_history: int = 16,
-        max_image_history: int = 0
+        max_image_history: int = 0,
+        domain: str = 'math'
     ):
         """
         Initialize MATH agent.
@@ -165,11 +166,13 @@ class MathAgent:
             remember_cot: Remember chain-of-thought in history
             max_text_history: Max reasoning steps to keep in context
             max_image_history: Not used for MATH (kept for compatibility)
+            domain: 'crafter' or 'math' - determines reasoner instructions (default: 'math')
         """
         self.client = client_factory()
         self.prompt_builder = MathPromptBuilder(max_text_history, remember_cot)
+        self.domain = domain
         
-        print(f"[DEBUG] ✅ MathAgent initialized with mode={mode}")
+        print(f"[DEBUG] ✅ MathAgent initialized with mode={mode}, domain={domain}")
         
         self.mode = mode
         self.planning_frequency_k = planning_frequency
@@ -218,6 +221,8 @@ class MathAgent:
         self.planning_decisions = []
         self.plan_history = []
         self.compute_metadata_history = []
+        self.tools_used = []  # Track tool names in order
+        self.compute_configs_used = []  # Track compute configs in order
         
         # Initialize selectors and reasoners
         self.tool_selector = None
@@ -226,10 +231,15 @@ class MathAgent:
         self.reasoners = {}
         
         if self.use_tool_selector or self.use_compute_selector or fixed_tool or fixed_compute:
-            self._initialize_selectors_and_reasoners()
+            self._initialize_selectors_and_reasoners(domain=self.domain)
     
-    def _initialize_selectors_and_reasoners(self):
-        """Initialize tool selector, compute selector, PRM, and reasoners."""
+    def _initialize_selectors_and_reasoners(self, domain='math'):
+        """
+        Initialize tool selector, compute selector, PRM, and reasoners.
+        
+        Args:
+            domain: 'crafter' or 'math' - determines instruction format (default: 'math')
+        """
         if self.use_tool_selector:
             self.tool_selector = ToolSelector(self.client)
         
@@ -244,8 +254,9 @@ class MathAgent:
             VerifierTool, WebSearchTool
         )
         
-        reactive_actor = ReactiveActorReasoner(self.client)
-        cot_reasoner = CoTReasoner(self.client)
+        # Initialize reasoners with domain parameter
+        reactive_actor = ReactiveActorReasoner(self.client, domain=domain)
+        cot_reasoner = CoTReasoner(self.client, domain=domain)
         
         # For MATH, heuristic script is less relevant, but include for compatibility
         policy = CrafterPolicy()  # Placeholder, won't be used much for MATH
@@ -283,6 +294,8 @@ class MathAgent:
         self.prompt_builder.set_problem(problem)
         self.step_count = 0
         self.plan = None
+        self.tools_used = []  # Reset for this problem
+        self.compute_configs_used = []  # Reset for this problem
         
         # ========================================
         # PHASE 1: PLANNING (if enabled)
@@ -309,7 +322,9 @@ class MathAgent:
                 metadata={
                     'mode': 'no_planning',
                     'has_plan': False,
-                    'planning_decision': 0
+                    'planning_decision': 0,
+                    'tools_used': self.tools_used,
+                    'compute_configs_used': self.compute_configs_used
                 }
             )
         
@@ -388,7 +403,9 @@ class MathAgent:
             'plan': self.plan,
             'step_count': self.step_count,
             'planning_decision': self.planning_decisions[-1] if self.planning_decisions else 0,
-            'compute_metadata': self.compute_metadata_history
+            'compute_metadata': self.compute_metadata_history,
+            'tools_used': self.tools_used,
+            'compute_configs_used': self.compute_configs_used
         }
         
         print(f"[DEBUG] Final answer: {answer}")
@@ -456,9 +473,16 @@ class MathAgent:
             start_time = time.time()
             tokens_used = 0
             print(f"[DEBUG] Executing tool: {tool_name}")
+            
+            # Track tool name
+            self.tools_used.append(tool_name)
+            
             if tool_name in self.reasoners:
                 reasoner = self.reasoners[tool_name]
                 # print(f"[DEBUG] Executing tool: {tool_name} with compute: {compute_config}")   #TODO right compute comfig is only working with reasoner tools and not with the verifiers
+                
+                # Track compute config for this tool
+                self.compute_configs_used.append(copy.deepcopy(compute_config))
                 
                 if compute_config['param'] == 1:
                     # Direct execution (no compute strategy)
@@ -502,6 +526,9 @@ class MathAgent:
                 print(f"[DEBUG] Tool {tool_name} execution complete")
                 
             elif tool_name == 'numeric_verifier':
+                # Verifier tools don't have compute config in same way
+                self.compute_configs_used.append({'strategy': 'direct', 'param': 1})
+                
                 result = self.numeric_verifier.verify(
                     messages, problem, self.plan, accumulated_reasoning[-1] if accumulated_reasoning else ""
                 )
@@ -516,6 +543,8 @@ class MathAgent:
                 })
                 
             elif tool_name == 'verifier':
+                self.compute_configs_used.append({'strategy': 'direct', 'param': 1})
+                
                 result = self.verifier.verify(
                     messages, problem, self.plan, accumulated_reasoning[-1] if accumulated_reasoning else ""
                 )
@@ -530,6 +559,8 @@ class MathAgent:
                 })
                 
             elif tool_name == 'summarizer':
+                self.compute_configs_used.append({'strategy': 'direct', 'param': 1})
+                
                 summary = self.summarizer.summarize('\n'.join(accumulated_reasoning))
                 accumulated_reasoning.append(f"\n--- SUMMARY ---")
                 accumulated_reasoning.append(f"{summary}")
@@ -542,6 +573,8 @@ class MathAgent:
                 })
                 
             elif tool_name == 'reframe':
+                self.compute_configs_used.append({'strategy': 'direct', 'param': 1})
+                
                 reframed = self.reframe_tool.reframe(problem, self.plan)
                 accumulated_reasoning.append(f"\n--- REFRAMED PROBLEM ---")
                 accumulated_reasoning.append(f"{reframed}")
@@ -554,6 +587,8 @@ class MathAgent:
                 })
                 
             elif tool_name == 'web_search':
+                self.compute_configs_used.append({'strategy': 'direct', 'param': 1})
+                
                 results = self.web_tool.search(problem)
                 accumulated_reasoning.append(f"\n--- WEB SEARCH RESULTS ---")
                 accumulated_reasoning.append(f"{results}")
@@ -690,6 +725,8 @@ Provide only the numeric value or simplified expression in the answer tags."""
         self.planning_decisions = []
         self.plan_history = []
         self.compute_metadata_history = []
+        self.tools_used = []
+        self.compute_configs_used = []
         
         if self.tool_selector:
             self.tool_selector.reset()
@@ -757,6 +794,8 @@ def check_answer_equivalence(pred: str, gold: str) -> bool:
     return False
 
 
+import csv
+
 def evaluate_math_dataset(
     agent_factory,
     output_dir: str,
@@ -820,6 +859,18 @@ def evaluate_math_dataset(
     stats_by_type = {}
     stats_by_level = {}
     
+    # Initialize CSV file
+    csv_path = output_dir / f"mode-{agent_config['mode']}_planner-{agent_config['use_planner']}_toolsel-{agent_config['use_tool_selector']}_computesel-{agent_config['use_compute_selector']}_fixedtool-{agent_config['fixed_tool']}_fixedcompute-{agent_config['fixed_compute']}_pf-{agent_config['planning_frequency']}_results_live.csv"
+    csv_headers = ['problem_id', 'problem_type', 'level', 'gold_answer', 'predicted_answer', 
+                   'is_correct', 'cumulative_accuracy', 'time_seconds']
+    
+    # Create CSV file and write header
+    with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=csv_headers)
+        writer.writeheader()
+    
+    print(f"[INFO] CSV results will be saved to: {csv_path}")
+    
     start_time = time.time()
     
     for idx in range(len(dataset)):
@@ -850,8 +901,6 @@ def evaluate_math_dataset(
         response = agent.solve(problem)
         problem_time = time.time() - problem_start
         
-
-
         # Check answer
         is_correct = check_answer_equivalence(response.answer, gold_answer_extracted)
         
@@ -883,7 +932,7 @@ def evaluate_math_dataset(
         print(f"Overall Accuracy: {accuracy:.2f}% ({correct}/{total})")
         print(f"Time: {problem_time:.2f}s")
         
-        # Save result
+        # Save result to results list
         result = {
             'problem_id': idx,
             'problem': problem,
@@ -896,25 +945,27 @@ def evaluate_math_dataset(
             'plan': response.plan,
             'is_correct': is_correct,
             'time_seconds': problem_time,
+            'tools_used': response.metadata.get('tools_used', []),
+            'compute_configs_used': response.metadata.get('compute_configs_used', []),
             'metadata': response.metadata
         }
         results.append(result)
         
-        # Save intermediate results every 10 problems
-        if (idx + 1) % 10 == 0:
-            intermediate_path = output_dir / f'results_intermediate_{idx + 1}.json'
-            with open(intermediate_path, 'w') as f:
-                json.dump({
-                    'results': results,
-                    'stats': {
-                        'total_problems': total,
-                        'correct': correct,
-                        'accuracy': accuracy,
-                        'by_type': stats_by_type,
-                        'by_level': stats_by_level
-                    }
-                }, f, indent=2)
-            print(f"[INFO] Saved intermediate results to {intermediate_path}")
+        # Append to CSV file immediately
+        csv_row = {
+            'problem_id': idx,
+            'problem_type': problem_type,
+            'level': level,
+            'gold_answer': gold_answer_extracted,
+            'predicted_answer': response.answer,
+            'is_correct': is_correct,
+            'cumulative_accuracy': f"{accuracy:.2f}",
+            'time_seconds': f"{problem_time:.2f}"
+        }
+        
+        with open(csv_path, 'a', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=csv_headers)
+            writer.writerow(csv_row)
     
     total_time = time.time() - start_time
     
@@ -951,7 +1002,8 @@ def evaluate_math_dataset(
         'results': results
     }
     
-    final_path = output_dir / 'results_final.json'
+    final_path = output_dir / f"mode-{agent_config['mode']}_planner-{agent_config['use_planner']}_toolsel-{agent_config['use_tool_selector']}_computesel-{agent_config['use_compute_selector']}_fixedtool-{agent_config['fixed_tool']}_fixedcompute-{agent_config['fixed_compute']}_pf-{agent_config['planning_frequency']}_results_final.json"
+
     with open(final_path, 'w') as f:
         json.dump(final_results, f, indent=2)
     
@@ -970,9 +1022,9 @@ def evaluate_math_dataset(
     for level, acc in accuracy_by_level.items():
         print(f"  {level}: {acc:.2f}% ({stats_by_level[level]['correct']}/{stats_by_level[level]['total']})")
     print(f"\nResults saved to: {final_path}")
+    print(f"Live CSV results saved to: {csv_path}")
     
     return final_results
-
 
 # Example usage with CLI-style config
 def create_agent_from_config(config: Dict):
@@ -994,7 +1046,8 @@ def create_agent_from_config(config: Dict):
         fixed_compute=config['agent'].get('fixed_compute'),
         remember_cot=config['agent']['remember_cot'],
         max_text_history=config['agent']['max_text_history'],
-        max_image_history=config['agent']['max_image_history']
+        max_image_history=config['agent']['max_image_history'],
+        domain=config['agent'].get('domain', 'math')  # Default to 'math'
     )
     
     return agent
@@ -1015,12 +1068,13 @@ def main():
             'max_image_history': 0,
             'fixed_tool': None,  # or 'cot' / 'reactive_actor'
             'fixed_compute': None,  # or {'strategy': 'best_of_n', 'param': 3}
-            'planning_frequency': None  # Only for fixed mode
+            'planning_frequency': None,  # Only for fixed mode
+            'domain': 'math'  # 'math' for MATH dataset, 'crafter' for Crafter game
         },
         'eval': {
             'num_workers': 16,
             'output_dir': 'multi_tool_results',
-            'max_problems': 10,  # Set to small number for testing
+            'max_problems': 250,  # Set to small number for testing
             'split': 'train',
             'problem_types': None,
             'difficulty_levels': None
