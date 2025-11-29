@@ -342,9 +342,9 @@ class MathAgent:
             messages = self.prompt_builder.get_prompt(None)
             
             if self.mode == 'dynamic':
-                instruction = self._get_planning_only_instruction()
+                instruction = self._get_planning_only_instruction(problem)
             else:
-                instruction = self._get_planning_only_instruction()
+                instruction = self._get_planning_only_instruction(problem)
             
             messages.append({'role': 'user', 'content': instruction})
             response = self.client.generate(messages)
@@ -629,14 +629,32 @@ Only provide the answer value, nothing else."""}
         
         return full_reasoning, final_answer
 
-    def _get_planning_only_instruction(self) -> str:
+    def _get_planning_only_instruction(self, problem) -> str:
         """Get instruction for generating plan only (separate from solving)."""
-        return """Review the problem carefully and create a high-level plan for solving it.
+        return f"""Review the problem carefully and create a high-level plan for solving it.
 
-Output your plan in this format:
-<plan>YOUR SOLUTION APPROACH</plan>
+    Output your plan in this format:
+    <plan>YOUR SOLUTION APPROACH</plan>
 
-Be specific about the steps you will take, but do NOT solve the problem yet."""
+    Be specific about the steps you will take, but do NOT solve the problem yet.
+
+    You are a mathematical problem planner.
+
+    Your task is to produce a high-level solution approach for the following problem.
+
+    Problem:
+    {problem}
+
+    * STRICT REQUIREMENTS *
+    1. DO NOT solve the problem.
+    2. DO NOT perform algebra, arithmetic, or simplification.
+    3. Write 1–3 sentence plan only.
+    4. Wrap the plan EXACTLY inside <plan>...</plan>
+    5. No text is allowed outside the <plan> tags.
+
+    Output format (mandatory):
+    <plan>STEP-BY-STEP HIGH-LEVEL STRATEGY ONLY</plan>
+    """
 
     def _get_solve_with_plan_instruction(self) -> str:
         """Get instruction for solving with an existing plan."""
