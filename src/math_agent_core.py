@@ -171,7 +171,9 @@ class MathAgent:
         planning_prompt_template=None,
         math_system_prompt=None,
         tool_selector_prompt=None,
+        tool_selector_system_prompt=None,
         compute_selector_prompt=None,
+        compute_selector_system_prompt=None,
         reactive_instruction_prompt=None,
         cot_instruction_prompt=None,
         prm_scoring_prompt=None,
@@ -191,7 +193,9 @@ class MathAgent:
                 problem,
                 messages,
                 tool_selector_prompt,
+                tool_selector_system_prompt,
                 compute_selector_prompt,
+                compute_selector_system_prompt,
                 reactive_instruction_prompt,
                 cot_instruction_prompt,
                 prm_scoring_prompt,
@@ -202,6 +206,7 @@ class MathAgent:
                 problem,
                 messages,
                 compute_selector_prompt,
+                compute_selector_system_prompt,
                 reactive_instruction_prompt,
                 cot_instruction_prompt,
                 prm_scoring_prompt,
@@ -241,6 +246,7 @@ class MathAgent:
         problem,
         messages,
         compute_selector_prompt,
+        compute_selector_system_prompt,
         reactive_instruction_prompt,
         cot_instruction_prompt,
         prm_scoring_prompt,
@@ -264,7 +270,8 @@ class MathAgent:
                 tool_name,
                 compute_selector_prompt,
                 messages,
-                DecisionPayload.model_json_schema()
+                DecisionPayload.model_json_schema(),
+                compute_selector_system_prompt
             )
         elif self.fixed_compute:
             compute_config = self.fixed_compute
@@ -302,7 +309,9 @@ class MathAgent:
         problem,
         messages,
         tool_selector_prompt,
+        tool_selector_system_prompt,
         compute_selector_prompt,
+        compute_selector_system_prompt,
         reactive_instruction_prompt,
         cot_instruction_prompt,
         prm_scoring_prompt,
@@ -313,7 +322,8 @@ class MathAgent:
             self.plan,
             tool_selector_prompt,
             messages,
-            ToolsPayload.model_json_schema()
+            ToolsPayload.model_json_schema(),
+            tool_selector_system_prompt
         )
         
         selected_tools = tool_selection.get("tools", ["reactive_actor"])
@@ -339,7 +349,8 @@ class MathAgent:
                         tool_name,
                         compute_selector_prompt,
                         messages,
-                        DecisionPayload.model_json_schema()
+                        DecisionPayload.model_json_schema(),
+                        compute_selector_system_prompt
                     )
                 elif self.fixed_compute:
                     compute_config = self.fixed_compute
@@ -433,8 +444,8 @@ class MathAgent:
                 "role": "user",
                 "content": f"""{full_reasoning}
 
-Based on all the reasoning above, provide the final numerical answer or simplified expression.
-Only provide the answer value, nothing else."""
+                Based on all the reasoning above, provide the final numerical answer or simplified expression.
+                Only provide the answer value, nothing else."""
             }
         ]
         
@@ -443,6 +454,8 @@ Only provide the answer value, nothing else."""
             schema=FinalAnswer.model_json_schema()
         )
         
+
+        print("Final Answer Structured Response:", structured_response)
         final_answer = get_field_from_completion(structured_response.completion, "answer")
         
         return full_reasoning, final_answer

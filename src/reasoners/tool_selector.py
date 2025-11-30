@@ -21,16 +21,8 @@ class ToolSelector:
         self.client = client
         self.tool_selection_history = []
     
-    def _build_prompt(self, obs, plan, history_messages, tool_selector_prompt):
-        sys = {
-            "role": "system",
-            "content": (
-                "You are a tool selector that returns STRICT JSON for multi-tool chains.\n"
-                "Respond with a single JSON object ONLY, no prose, no markdown.\n"
-                "Schema: {\"tools\": [\"tool1\", \"tool2\", ...]}.\n"
-                "Available tools: reactive_actor, cot, heuristic_script, numeric_verifier, verifier, summarizer, reframe, web_search."
-            ),
-        }
+    def _build_prompt(self, obs, plan, history_messages, tool_selector_prompt, tool_selector_system_prompt):
+        sys = {"role": "system", "content": tool_selector_system_prompt}
         
         formatted_prompt = tool_selector_prompt.format(
             plan=plan if plan else "(none)",
@@ -58,8 +50,8 @@ class ToolSelector:
         
         return {"tools": validated}
     
-    def select_tool(self, obs, plan, tool_selector_prompt, history_messages, schema):
-        messages = self._build_prompt(obs, plan, history_messages or [], tool_selector_prompt)
+    def select_tool(self, obs, plan, tool_selector_prompt, history_messages, schema, tool_selector_system_prompt):
+        messages = self._build_prompt(obs, plan, history_messages or [], tool_selector_prompt, tool_selector_system_prompt)
         
         resp = self.client.generate_with_structured(messages, schema=schema)
         text = resp.completion if hasattr(resp, "completion") else str(resp)

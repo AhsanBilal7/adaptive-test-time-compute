@@ -16,15 +16,8 @@ class ComputeSelector:
         self.client = client
         self.compute_selection_history = []
     
-    def _build_prompt(self, obs, plan, tool_name, compute_selector_prompt, history_messages):
-        sys = {
-            "role": "system",
-            "content": (
-                "You are a selector that returns STRICT JSON for test-time compute.\n"
-                "Respond with a single JSON object ONLY, no prose, no markdown.\n"
-                "Schema: {\"strategy\": \"best_of_n|beam_search|lookahead\", \"param\": int}."
-            )
-        }
+    def _build_prompt(self, obs, plan, tool_name, compute_selector_prompt, history_messages, compute_selector_system_prompt):
+        sys = {"role": "system", "content": compute_selector_system_prompt}
         
         user_content = compute_selector_prompt.format(
             tool=tool_name,
@@ -60,8 +53,8 @@ class ComputeSelector:
         
         return {"strategy": strategy, "param": param}
     
-    def select_compute_strategy(self, obs, plan, tool_name, compute_selector_prompt, history_messages, schema):
-        messages = self._build_prompt(obs, plan, tool_name, compute_selector_prompt, history_messages or [])
+    def select_compute_strategy(self, obs, plan, tool_name, compute_selector_prompt, history_messages, schema, compute_selector_system_prompt):
+        messages = self._build_prompt(obs, plan, tool_name, compute_selector_prompt, history_messages or [], compute_selector_system_prompt)
         resp = self.client.generate_with_structured(messages, schema)
         text = resp.completion if hasattr(resp, "completion") else str(resp)
         selection = self._parse_and_validate(text)

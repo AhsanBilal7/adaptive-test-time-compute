@@ -1,6 +1,17 @@
 MATH_SYSTEM_PROMPT = """You are a math solver. Provide the answer to the user's specific question in the required format."""
 
 
+TOOL_SELECTOR_SYSTEM_PROMPT = """You are a tool selector that returns STRICT JSON for multi-tool chains.
+Respond with a single JSON object ONLY, no prose, no markdown.
+Schema: {"tools": ["tool1", "tool2", ...]}.
+Available tools: reactive_actor, cot, heuristic_script, numeric_verifier, verifier, summarizer, reframe, web_search."""
+
+
+COMPUTE_SELECTOR_SYSTEM_PROMPT = """You are a selector that returns STRICT JSON for test-time compute.
+Respond with a single JSON object ONLY, no prose, no markdown.
+Schema: {"strategy": "best_of_n|beam_search|lookahead", "param": int}."""
+
+
 PLANNING_PROMPT_TEMPLATE = """Review the problem carefully and create a high-level plan for solving it.
 
 Output your plan in this format:
@@ -25,29 +36,36 @@ Problem:
 Output format (mandatory):
 <plan>STEP-BY-STEP HIGH-LEVEL STRATEGY ONLY</plan>"""
 
-
 TOOL_SELECTOR_PROMPT = (
     "Select one or more tools to execute SEQUENTIALLY for this step.\n"
     "Plan: {plan}\n"
     "Observation: {obs}\n\n"
     "Available tools:\n"
-    "reactive_actor  - Fast, direct action selection\n"
-    "cot             - Step-by-step reasoning\n"
-    "heuristic_script- Rule-based domain policy\n"
-    "numeric_verifier- PRM-based numeric checks\n"
-    "verifier        - General PRM correctness check\n"
-    "summarizer      - Compress long reasoning chains\n"
-    "reframe         - Reformulate question/plan\n"
-    "web_search      - Retrieve external information\n\n"
+    "reactive_actor   - Fast, direct action selection\n"
+    "cot              - Step-by-step reasoning\n"
+    "heuristic_script - Rule-based domain policy\n"
+    "numeric_verifier - PRM-based numeric checks\n"
+    "verifier         - General PRM correctness check\n"
+    "summarizer       - Compress long reasoning chains\n"
+    "reframe          - Reformulate question/plan\n"
+    "web_search       - Retrieve external information\n\n"
     "DECISION RULES (apply in order; collect matches; cap to 3 tools):\n"
-    "1) FACT-GAP: If Plan/Observation indicates missing facts, recency, URLs, or uncertainty about world knowledge -> include web_search first.\n"
-    "2) AMBIGUITY/POOR SPEC: If question is unclear, contradictory, or underspecified (markers: 'unclear', '?', 'maybe', multiple interpretations) -> include reframe before any reasoning.\n"
-    "3) MULTI-STEP/DERIVATION: If solving requires multi-step logic, decomposition, proofs, or algorithm design -> include cot.\n"
-    "4) DOMAIN RULES: If a known rule-based policy applies (e.g., fixed heuristics/workflows) -> include heuristic_script (before cot if it can prune the space).\n"
-    "5) NUMERIC RISK: If arithmetic, units, thresholds, probabilities, or quantitative constraints appear -> include numeric_verifier after the generator (cot/heuristic_script/reactive_actor).\n"
-    "6) GENERAL CORRECTNESS: If the output must satisfy constraints/specs or prior errors are likely -> include verifier after generation (and after numeric_verifier if both are used).\n"
-    "7) LONG CONTEXT: If Plan+Observation or expected chain > 600 tokens or multiple sub-answers -> include summarizer last to compress.\n"
-    "8) TRIVIALITY: ONLY if none of rules 1-7 fired and the task is single-step with explicit action -> choose [reactive_actor] alone.\n\n"
+    "1) FACT-GAP: If Plan/Observation indicates missing facts, recency, URLs, "
+    "or uncertainty about world knowledge -> include web_search first.\n"
+    "2) AMBIGUITY/POOR SPEC: If question is unclear, contradictory, or underspecified "
+    "(markers: 'unclear', '?', 'maybe', multiple interpretations) -> include reframe before any reasoning.\n"
+    "3) MULTI-STEP/DERIVATION: If solving requires multi-step logic, decomposition, proofs, "
+    "or algorithm design -> include cot.\n"
+    "4) DOMAIN RULES: If a known rule-based policy applies (e.g., fixed heuristics/workflows) "
+    "-> include heuristic_script (before cot if it can prune the space).\n"
+    "5) NUMERIC RISK: If arithmetic, units, thresholds, probabilities, or quantitative constraints appear "
+    "-> include numeric_verifier after the generator (cot/heuristic_script/reactive_actor).\n"
+    "6) GENERAL CORRECTNESS: If the output must satisfy constraints/specs or prior errors are likely "
+    "-> include verifier after generation (and after numeric_verifier if both are used).\n"
+    "7) LONG CONTEXT: If Plan+Observation or expected chain > 600 tokens or multiple sub-answers "
+    "-> include summarizer last to compress.\n"
+    "8) TRIVIALITY: ONLY if none of rules 1-7 fired and the task is single-step with explicit action "
+    "-> choose [\"reactive_actor\"] alone.\n\n"
     "ORDERING RULES:\n"
     "- If reframe selected, it must be first.\n"
     "- If web_search selected, it comes right after reframe (or first if no reframe).\n"
@@ -59,13 +77,9 @@ TOOL_SELECTOR_PROMPT = (
     "- If any numeric terms are present, numeric_verifier is mandatory.\n"
     "- If external facts are referenced or freshness matters, web_search is mandatory.\n"
     "- Max sequence length is 3 tools; prefer the most impactful ones per rules above.\n\n"
-    "TEMPLATES (examples, not prescriptive):\n"
-    "- Simple, unambiguous action -> [\"reactive_actor\"]\n"
-    "- Needs facts then reasoning with checks -> [\"web_search\", \"cot\", \"verifier\"]\n"
-    "- Rule-based pruning then numeric check -> [\"heuristic_script\", \"numeric_verifier\"]\n"
-    "- Ambiguous prompt then plan+verify -> [\"reframe\", \"cot\", \"verifier\"]\n"
-    "- Long chain to compress -> [\"cot\", \"summarizer\"]\n\n"
-    'Return JSON ONLY. Example: {"tools": ["web_search", "cot", "numeric_verifier"]}'
+    "OUTPUT FORMAT:\n"
+    "Return JSON ONLY, with a single key \"tools\" mapping to a list of tool names.\n"
+    "Example: {{\"tools\": [\"web_search\", \"cot\", \"numeric_verifier\"]}}\n"
 )
 
 
@@ -76,7 +90,7 @@ COMPUTE_SELECTOR_PROMPT = (
     "Observation: {obs}\n\n"
     "Guidelines (READ CAREFULLY, THEN OUTPUT JSON ONLY):\n"
     "1) Derive signals from Plan+Observation (string checks are fine):\n"
-    "   - branching_signals: count of terms { 'branch', 'option', 'alternative', 'path', 'fork', 'subtask', 'search', 'explore' } + patterns like lists (', and', ';', numbered steps >1).\n"
+    "   - branching_signals: count of terms {{ 'branch', 'option', 'alternative', 'path', 'fork', 'subtask', 'search', 'explore' }} + patterns like lists (', and', ';', numbered steps >1).\n"
     "   - verifier_signal: 1 if Plan mentions 'verify', 'verifier', 'check', 'constraint', or if a verifier/scorer tool is available; else 0.\n"
     "   - ranking_risk: 1 if the task is to choose/compare/order/rank/evaluate candidates or mentions 'tie', 'score', 'tradeoff'; else 0.\n"
     "   - clarity: 1 if instructions are single-step and unambiguous (no branching_signals, no question marks, no 'maybe', 'unsure', 'unclear'); else 0.\n"
@@ -97,7 +111,8 @@ COMPUTE_SELECTOR_PROMPT = (
     "   - Prefer beam_search over best_of_n whenever verifier_signal == 1.\n"
     "   - Prefer lookahead over best_of_n whenever ranking_risk == 1.\n"
     "\n"
-    'Return JSON ONLY with no explanation. Example: {"strategy":"beam_search","param":4}\n'
+    "Return JSON ONLY with no explanation. Example: "
+    "{{\"strategy\":\"beam_search\",\"param\":4}}\n"
 )
 
 

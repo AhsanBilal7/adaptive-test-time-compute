@@ -15,7 +15,7 @@ from src.math_agent_core import MathAgent
 from src.math_agent_core import get_field_from_completion
 
 from BALROG.balrog.client import create_llm_client
-
+from src.reasoners.prompts_templates import *
 
 def normalize_answer(answer: str) -> str:
     if answer is None:
@@ -136,7 +136,17 @@ def evaluate_math_dataset(
         agent.reset()
         
         problem_start = time.time()
-        response = agent.solve(problem)
+        response = agent.solve(
+        problem,
+        planning_prompt_template=PLANNING_PROMPT_TEMPLATE,
+        math_system_prompt=MATH_SYSTEM_PROMPT,
+        tool_selector_prompt=TOOL_SELECTOR_PROMPT,
+        compute_selector_prompt=COMPUTE_SELECTOR_PROMPT,
+        reactive_instruction_prompt=REACTIVE_INSTRUCTION_PROMPT,
+        cot_instruction_prompt=COT_INSTRUCTION_PROMPT,
+        prm_scoring_prompt=PRM_SCORING_PROMPT,
+        final_answer_system_prompt=FINAL_ANSWER_SYSTEM_PROMPT,
+        )
         problem_time = time.time() - problem_start
         
         is_correct = check_answer_equivalence(response.answer, gold_answer_extracted)
@@ -267,9 +277,9 @@ def create_agent_from_config(config: Dict):
         return create_llm_client(DictConfig(config["client"]))
     
     agent = MathAgent(
-        client_factory=client_factory,
-        mode=config["agent"]["mode"],
-        planning_frequency=config["agent"].get("planning_frequency"),
+        client_factory=client_factory(),
+        # mode=config["agent"]["mode"],
+        # planning_frequency=config["agent"].get("planning_frequency"),
         use_planner=config["agent"]["use_planner"],
         use_tool_selector=config["agent"]["use_tool_selector"],
         use_compute_selector=config["agent"]["use_compute_selector"],
@@ -277,8 +287,8 @@ def create_agent_from_config(config: Dict):
         fixed_compute=config["agent"].get("fixed_compute"),
         remember_cot=config["agent"]["remember_cot"],
         max_text_history=config["agent"]["max_text_history"],
-        max_image_history=config["agent"]["max_image_history"],
-        domain=config["agent"].get("domain", "math")
+        # max_image_history=config["agent"]["max_image_history"],
+        # domain=config["agent"].get("domain", "math")
     )
     
     return agent
