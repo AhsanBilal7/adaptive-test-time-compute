@@ -16,7 +16,6 @@ from src.math_agent_core import get_field_from_completion
 
 from BALROG.balrog.client import create_llm_client
 from src.help_functions.prompts_templates import *
-
 def normalize_answer(answer: str) -> str:
     if answer is None:
         return ""

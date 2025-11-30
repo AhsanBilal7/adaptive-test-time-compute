@@ -332,14 +332,12 @@ class MathAgent:
         accumulated_reasoning = []
         
         for tool_name in selected_tools:
-            if tool_name in ["reactive_actor", "cot", "heuristic_script"]:
+            if tool_name in ["reactive_actor", "cot"]:
                 reasoner = self.reasoners.get(tool_name)
                 
                 if tool_name == "reactive_actor":
                     instruction_prompt = reactive_instruction_prompt
                 elif tool_name == "cot":
-                    instruction_prompt = cot_instruction_prompt
-                else:
                     instruction_prompt = cot_instruction_prompt
                 
                 if self.use_compute_selector:
@@ -385,6 +383,7 @@ class MathAgent:
                     
                     accumulated_reasoning.append(f"\n--- {tool_name.upper()} OUTPUT (with {compute_config['strategy']}) ---")
                     accumulated_reasoning.append(f"Best action: {action}")
+                    accumulated_reasoning.append(f"Best Reasoning: {metadata.get('chosen_reasoning', '')}")
                     metadata["tool"] = tool_name
                 
                 self.compute_metadata_history.append(metadata)

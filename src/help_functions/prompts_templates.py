@@ -4,7 +4,7 @@ MATH_SYSTEM_PROMPT = """You are a math solver. Provide the answer to the user's 
 TOOL_SELECTOR_SYSTEM_PROMPT = """You are a tool selector that returns STRICT JSON for multi-tool chains.
 Respond with a single JSON object ONLY, no prose, no markdown.
 Schema: {"tools": ["tool1", "tool2", ...]}.
-Available tools: reactive_actor, cot, heuristic_script, numeric_verifier, verifier, summarizer, reframe, web_search."""
+Available tools: reactive_actor, cot, numeric_verifier, verifier, summarizer, reframe, web_search."""
 
 
 COMPUTE_SELECTOR_SYSTEM_PROMPT = """You are a selector that returns STRICT JSON for test-time compute.
@@ -43,7 +43,6 @@ TOOL_SELECTOR_PROMPT = (
     "Available tools:\n"
     "reactive_actor   - Fast, direct action selection\n"
     "cot              - Step-by-step reasoning\n"
-    "heuristic_script - Rule-based domain policy\n"
     "numeric_verifier - PRM-based numeric checks\n"
     "verifier         - General PRM correctness check\n"
     "summarizer       - Compress long reasoning chains\n"
@@ -56,10 +55,8 @@ TOOL_SELECTOR_PROMPT = (
     "(markers: 'unclear', '?', 'maybe', multiple interpretations) -> include reframe before any reasoning.\n"
     "3) MULTI-STEP/DERIVATION: If solving requires multi-step logic, decomposition, proofs, "
     "or algorithm design -> include cot.\n"
-    "4) DOMAIN RULES: If a known rule-based policy applies (e.g., fixed heuristics/workflows) "
-    "-> include heuristic_script (before cot if it can prune the space).\n"
     "5) NUMERIC RISK: If arithmetic, units, thresholds, probabilities, or quantitative constraints appear "
-    "-> include numeric_verifier after the generator (cot/heuristic_script/reactive_actor).\n"
+    "-> include numeric_verifier after the generator (cot/reactive_actor).\n"
     "6) GENERAL CORRECTNESS: If the output must satisfy constraints/specs or prior errors are likely "
     "-> include verifier after generation (and after numeric_verifier if both are used).\n"
     "7) LONG CONTEXT: If Plan+Observation or expected chain > 600 tokens or multiple sub-answers "
@@ -69,8 +66,7 @@ TOOL_SELECTOR_PROMPT = (
     "ORDERING RULES:\n"
     "- If reframe selected, it must be first.\n"
     "- If web_search selected, it comes right after reframe (or first if no reframe).\n"
-    "- heuristic_script precedes cot if both selected.\n"
-    "- numeric_verifier precedes verifier; both follow the generator (reactive_actor/heuristic_script/cot).\n"
+    "- numeric_verifier precedes verifier; both follow the generator (reactive_actor/cot).\n"
     "- summarizer is always last.\n\n"
     "HARD CONSTRAINTS:\n"
     "- Do NOT output only [\"reactive_actor\"] if any of rules 1-7 matched.\n"
@@ -136,20 +132,53 @@ Replace X.XX with your numeric score.
 """
 
 
+COT_INSTRUCTION_PROMPT = """Solve it step by step.
+
+You are about to solve a math problem. Your task RIGHT NOW is to choose the next action from the list below, and briefly explain why.
+
+Action set:
+- ParseProblem: Extract key variables, conditions and constraints from the problem statement.
+- ClassifySubjectDifficulty: Determine the subject area (Algebra, Geometry, etc.) and difficulty level.
+- ReformulateProblem: Restate the problem in a clearer or more formal mathematical notation.
+- CheckAssumptions: Identify implicit domain constraints or assumptions.
+- DecomposeSubproblems: Break the main problem into smaller sub-tasks or cases.
+- IdentifyToolsFormulas: List relevant formulas, theorems or tools required.
+- EstimateFeasibilityCheck: Do a quick check of plausibility, bounds or magnitudes.
+- PerformComputation: Execute an algebraic or numeric computation step.
+- CaseAnalysis: Carry out one case in a case-by-case analysis.
+- ConstructDiagramOrAuxiliary: For geometry or spatial problems, create an auxiliary construction or diagram.
+- CombineResults: Combine results from sub-tasks or cases into an aggregate expression.
+- SimplifyFinalizeExpression: Simplify the final expression into a standard form.
+- SanityCheckFinalAnswer: Plug in special cases or check boundary values to verify reasonableness.
+- BoxFinalAnswer: Format the final answer in the expected output style.
+- ReviewSolution: Review the full solution chain for logic or hidden assumptions.
+- GeneraliseOrEdgeCaseCheck: Consider extreme or boundary cases to ensure full correctness.
+- FormatSolutionText: Prepare the full derivation or solution text for output or training.
+
+Rules:
+- Output ONLY the following two XML blocks, in this exact order:
+  1. <reasoning>Brief explanation of why you chose the next action</reasoning>
+  2. <action>ActionName: one-line description</action>
+- Do NOT solve the problem.
+- Do NOT add any other text before, after, or between the tags.
+
+Output format (exact):
+<reasoning>...</reasoning>
+<action>ActionName: one-line description</action>"""
+
+
 REACTIVE_INSTRUCTION_PROMPT = """Solve it directly and efficiently.
 
 Use your mathematical intuition to quickly identify the solution approach and execute it.
 Focus on the most direct path to the answer.
 
-You are about to solve a math problem. Your task RIGHT NOW is to choose exactly next action from the list below.
+You are about to solve a math problem. Your task RIGHT NOW is to choose exactly the next action from the list below, and briefly explain why.
 
 Action set:
 - ParseProblem: Extract key variables, conditions and constraints from the problem statement.
 - ClassifySubjectDifficulty: Determine the subject area (Algebra, Geometry, etc.) and difficulty level.
-- IdentifyKeywordsHeuristics: Scan for cues or heuristics that suggest specific techniques.
 - ReformulateProblem: Restate the problem in a clearer or more formal mathematical notation.
 - CheckAssumptions: Identify implicit domain constraints or assumptions.
-- SelectStrategy: Choose a problem-solving strategy or heuristic to apply.
 - DecomposeSubproblems: Break the main problem into smaller sub-tasks or cases.
 - IdentifyToolsFormulas: List relevant formulas, theorems or tools required.
 - EstimateFeasibilityCheck: Do a quick check of plausibility, bounds or magnitudes.
@@ -162,51 +191,19 @@ Action set:
 - BoxFinalAnswer: Format the final answer in the expected output style.
 - ReviewSolution: Review the full solution chain for logic or hidden assumptions.
 - GeneraliseOrEdgeCaseCheck: Consider extreme or boundary cases to ensure full correctness.
-- AnnotateHeuristicUsed: Record which heuristic(s) were applied.
 - FormatSolutionText: Prepare the full derivation or solution text for output or training.
 
 Rules:
-- Output ONLY the chosen action inside <action>...</action> tags.
-- Inside the tags, write exactly: ActionName: one-line description.
-- Do NOT solve the problem, do NOT include any other text before or after the tags.
+- Output ONLY the following two XML blocks, in this exact order:
+  1. <reasoning>Brief explanation of why you chose the next action</reasoning>
+  2. <action>ActionName: one-line description</action>
+- Do NOT solve the problem.
+- Do NOT add any other text before, after, or between the tags.
 
 Output format (exact):
+<reasoning>...</reasoning>
 <action>ActionName: one-line description</action>"""
 
-
-COT_INSTRUCTION_PROMPT = """Solve it step by step.
-
-You are about to solve a math problem. Your task RIGHT NOW is to choose next action from the list below.
-
-Action set:
-- ParseProblem: Extract key variables, conditions and constraints from the problem statement.
-- ClassifySubjectDifficulty: Determine the subject area (Algebra, Geometry, etc.) and difficulty level.
-- IdentifyKeywordsHeuristics: Scan for cues or heuristics that suggest specific techniques.
-- ReformulateProblem: Restate the problem in a clearer or more formal mathematical notation.
-- CheckAssumptions: Identify implicit domain constraints or assumptions.
-- SelectStrategy: Choose a problem-solving strategy or heuristic to apply.
-- DecomposeSubproblems: Break the main problem into smaller sub-tasks or cases.
-- IdentifyToolsFormulas: List relevant formulas, theorems or tools required.
-- EstimateFeasibilityCheck: Do a quick check of plausibility, bounds or magnitudes.
-- PerformComputation: Execute an algebraic or numeric computation step.
-- CaseAnalysis: Carry out one case in a case-by-case analysis.
-- ConstructDiagramOrAuxiliary: For geometry or spatial problems, create an auxiliary construction or diagram.
-- CombineResults: Combine results from sub-tasks or cases into an aggregate expression.
-- SimplifyFinalizeExpression: Simplify the final expression into a standard form.
-- SanityCheckFinalAnswer: Plug in special cases or check boundary values to verify reasonableness.
-- BoxFinalAnswer: Format the final answer in the expected output style.
-- ReviewSolution: Review the full solution chain for logic or hidden assumptions.
-- GeneraliseOrEdgeCaseCheck: Consider extreme or boundary cases to ensure full correctness.
-- AnnotateHeuristicUsed: Record which heuristic(s) were applied.
-- FormatSolutionText: Prepare the full derivation or solution text for output or training.
-
-Rules:
-- Output ONLY the chosen action inside <action>...</action> tags.
-- Inside the tags, write exactly: ActionName: one-line description.
-- Do NOT solve the problem, do NOT include any other text before or after the tags
-
-Output format (exact):
-<action>ActionName: one-line description</action>"""
 
 
 FINAL_ANSWER_SYSTEM_PROMPT = "You are a mathematical problem solver. Extract the final numerical answer from the reasoning below."
