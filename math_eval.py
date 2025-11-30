@@ -15,7 +15,7 @@ from src.math_agent_core import MathAgent
 from src.math_agent_core import get_field_from_completion
 
 from BALROG.balrog.client import create_llm_client
-from src.reasoners.prompts_templates import *
+from src.help_functions.prompts_templates import *
 
 def normalize_answer(answer: str) -> str:
     if answer is None:
@@ -322,7 +322,7 @@ def main():
             "base_url": "http://localhost:11434/v1",
             "model_id": "gemma3n:e4b",
             "generate_kwargs": {
-                "temperature": 0.7,
+                "temperature": 0.8,
                 "max_tokens": 4096
             },
             "timeout": 60,

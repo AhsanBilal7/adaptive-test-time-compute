@@ -4,15 +4,15 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Optional, Dict, List, Any
 
-from src.reasoners.schemas import FinalAnswer, ToolsPayload, DecisionPayload
-from src.reasoners.tool_selector import ToolSelector
-from src.reasoners.compute_selector import ComputeSelector
-from src.reasoners.prm_model import PRMModel
-from src.reasoners.reactive_actor import ReactiveActorReasoner
-from src.reasoners.cot_reasoner import CoTReasoner
-from src.reasoners.heuristic_script_reasoner import HeuristicScriptReasoner
-from src.reasoners.compute_strategies import get_compute_strategy
-from src.reasoners.tools import NumericVerifier, VerifierTool, SummarizerTool, ReframeTool, WebSearchTool
+from src.help_functions.schemas import FinalAnswer, ToolsPayload, DecisionPayload
+from src.help_functions.tool_selector import ToolSelector
+from src.help_functions.compute_selector import ComputeSelector
+from src.help_functions.prm_model import PRMModel
+from src.help_functions.reactive_actor import ReactiveActorReasoner
+from src.help_functions.cot_reasoner import CoTReasoner
+from src.help_functions.heuristic_script_reasoner import HeuristicScriptReasoner
+from src.help_functions.compute_strategies import get_compute_strategy
+from src.help_functions.tools import NumericVerifier, VerifierTool, SummarizerTool, ReframeTool, WebSearchTool
 
 
 def get_field_from_completion(completion_text, field, default=None):
@@ -442,20 +442,34 @@ class MathAgent:
             {"role": "system", "content": final_answer_system_prompt},
             {
                 "role": "user",
-                "content": f"""{full_reasoning}
+                "content": f"""QUESTION/PROBLEM:
+                {problem}
 
-                Based on all the reasoning above, provide the final numerical answer or simplified expression.
-                Only provide the answer value, nothing else."""
+                PLAN FOLLOWED:
+                {self.plan if self.plan else "No plan was created."}
+
+                FULL REASONING AND ANALYSIS:
+                {full_reasoning}
+
+                ---
+
+                Now analyze the question, the plan that was followed, and all the reasoning provided above. Based on this complete analysis, provide ONLY the final answer in the following JSON format with no additional explanation or text:
+
+                {{"answer": "<final_answer_here>"}}"""
             }
         ]
+        
+        print("=============================================================================================")
+        print("Full Reasoning:\n", full_reasoning)
+        print("=============================================================================================")
         
         structured_response = self.client.generate_with_structured(
             messages=final_messages,
             schema=FinalAnswer.model_json_schema()
         )
         
-
         print("Final Answer Structured Response:", structured_response)
+
         final_answer = get_field_from_completion(structured_response.completion, "answer")
         
         return full_reasoning, final_answer
