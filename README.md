@@ -118,6 +118,23 @@
                                         └───────────────────┘
 
 
+#### Run the experiments
+```
+# Create logs directory first
+mkdir -p logs
+
+# Run direct mode in detached mode
+nohup python math_eval.py --config configs/config_direct.yaml > logs/direct.log 2>&1 &
+
+# Run fixed tool mode in detached mode
+nohup python math_eval.py --config configs/config_fixed_tool.yaml > logs/fixed_tool.log 2>&1 &
+
+# Run fixed compute mode in detached mode
+nohup python math_eval.py --config configs/config_fixed_compute.yaml > logs/fixed_compute.log 2>&1 &
+
+# Run dynamic mode in detached mode
+nohup python math_eval.py --config configs/config_dynamic.yaml > logs/dynamic.log 2>&1 &
+```
 ## License
 
 MIT
