@@ -151,6 +151,7 @@ def evaluate_math_dataset(
             cot_instruction_prompt=COT_INSTRUCTION_PROMPT,
             prm_scoring_prompt=PRM_SCORING_PROMPT,
             final_answer_system_prompt=FINAL_ANSWER_SYSTEM_PROMPT,
+            final_answer_user_prompt=FINAL_ANSWER_USER_PROMPT,
             direct_solve_prompt=DIRECT_SOLVE_PROMPT,
             direct_solve_system_prompt=DIRECT_SOLVE_SYSTEM_PROMPT,
         )
@@ -284,7 +285,7 @@ def create_agent_from_config(config: Dict):
         return create_llm_client(DictConfig(config["client"]))
     
     agent = MathAgent(
-        client_factory=client_factory,
+        client_factory=client_factory(),
         use_planner=config["agent"]["use_planner"],
         use_tool_selector=config["agent"]["use_tool_selector"],
         use_compute_selector=config["agent"]["use_compute_selector"],

@@ -200,7 +200,20 @@ Output format (exact):
 
 FINAL_ANSWER_SYSTEM_PROMPT = "You are a mathematical problem solver. Extract the final numerical answer from the reasoning below."
 
+FINAL_ANSWER_USER_PROMPT = """QUESTION/PROBLEM:
+{problem}
 
+PLAN FOLLOWED:
+{plan}
+
+FULL REASONING AND ANALYSIS:
+{full_reasoning}
+
+---
+
+Now analyze the question, the plan that was followed, and all the reasoning provided above. Based on this complete analysis, provide ONLY the final answer in the following JSON format with no additional explanation or text:
+
+{{"answer": "<final_answer_here>"}}"""
 
 
 

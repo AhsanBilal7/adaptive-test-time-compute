@@ -178,6 +178,7 @@ class MathAgent:
         cot_instruction_prompt=None,
         prm_scoring_prompt=None,
         final_answer_system_prompt=None,
+        final_answer_user_prompt=None,
         direct_solve_prompt=None,
         direct_solve_system_prompt=None,
     ):
@@ -209,6 +210,7 @@ class MathAgent:
                     cot_instruction_prompt,
                     prm_scoring_prompt,
                     final_answer_system_prompt,
+                    final_answer_user_prompt,
                 )
             else:
                 reasoning, answer = self._execute_simple(
@@ -219,6 +221,8 @@ class MathAgent:
                     reactive_instruction_prompt,
                     cot_instruction_prompt,
                     prm_scoring_prompt,
+                    final_answer_system_prompt,
+                    final_answer_user_prompt,
                 )
                 
         metadata = {
@@ -288,6 +292,7 @@ class MathAgent:
         cot_instruction_prompt,
         prm_scoring_prompt,
         final_answer_system_prompt,
+        final_answer_user_prompt,
     ):
         tool_name = self.fixed_tool if self.fixed_tool else "cot"
         self.tools_used = [tool_name]
@@ -347,20 +352,11 @@ class MathAgent:
             {"role": "system", "content": final_answer_system_prompt},
             {
                 "role": "user",
-                "content": f"""QUESTION/PROBLEM:
-                {problem}
-
-                PLAN FOLLOWED:
-                {self.plan if self.plan else "No plan was created."}
-
-                FULL REASONING AND ANALYSIS:
-                {full_reasoning}
-
-                ---
-
-                Now analyze the question, the plan that was followed, and all the reasoning provided above. Based on this complete analysis, provide ONLY the final answer in the following JSON format with no additional explanation or text:
-
-                {{"answer": "<final_answer_here>"}}"""
+                "content": final_answer_user_prompt.format(
+                    problem=problem,
+                    plan=self.plan if self.plan else "No plan was created.",
+                    full_reasoning=full_reasoning
+                )
             }
         ]
         
@@ -385,6 +381,7 @@ class MathAgent:
         cot_instruction_prompt,
         prm_scoring_prompt,
         final_answer_system_prompt,
+        final_answer_user_prompt,
     ):
         tool_selection = self.tool_selector.select_tool(
             problem,
@@ -510,33 +507,18 @@ class MathAgent:
             {"role": "system", "content": final_answer_system_prompt},
             {
                 "role": "user",
-                "content": f"""QUESTION/PROBLEM:
-                {problem}
-
-                PLAN FOLLOWED:
-                {self.plan if self.plan else "No plan was created."}
-
-                FULL REASONING AND ANALYSIS:
-                {full_reasoning}
-
-                ---
-
-                Now analyze the question, the plan that was followed, and all the reasoning provided above. Based on this complete analysis, provide ONLY the final answer in the following JSON format with no additional explanation or text:
-
-                {{"answer": "<final_answer_here>"}}"""
+                "content": final_answer_user_prompt.format(
+                    problem=problem,
+                    plan=self.plan if self.plan else "No plan was created.",
+                    full_reasoning=full_reasoning
+                )
             }
         ]
-        
-        # print("=============================================================================================")
-        # print("Full Reasoning:\n", full_reasoning)
-        # print("=============================================================================================")
         
         structured_response = self.client.generate_with_structured(
             messages=final_messages,
             schema=FinalAnswer.model_json_schema()
         )
-        
-        # print("Final Answer Structured Response:", structured_response)
 
         final_answer = get_field_from_completion(structured_response.completion, "answer")
         
