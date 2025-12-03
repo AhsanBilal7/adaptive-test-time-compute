@@ -1,21 +1,27 @@
-# BALROG/balrog/agents/math_eval.py
-
 import re
 import time
 import json
 import csv
+import yaml
+import argparse
 from pathlib import Path
 from typing import Optional, Dict, List, Any
 
 from datasets import load_dataset
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 from src.math_agent_core import MathAgent
-
 from src.math_agent_core import get_field_from_completion
-
 from BALROG.balrog.client import create_llm_client
 from src.help_functions.prompts_templates import *
+
+
+def load_config(config_path: str) -> Dict:
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+    return config
+
+
 def normalize_answer(answer: str) -> str:
     if answer is None:
         return ""
@@ -136,15 +142,17 @@ def evaluate_math_dataset(
         
         problem_start = time.time()
         response = agent.solve(
-        problem,
-        planning_prompt_template=PLANNING_PROMPT_TEMPLATE,
-        math_system_prompt=MATH_SYSTEM_PROMPT,
-        tool_selector_prompt=TOOL_SELECTOR_PROMPT,
-        compute_selector_prompt=COMPUTE_SELECTOR_PROMPT,
-        reactive_instruction_prompt=REACTIVE_INSTRUCTION_PROMPT,
-        cot_instruction_prompt=COT_INSTRUCTION_PROMPT,
-        prm_scoring_prompt=PRM_SCORING_PROMPT,
-        final_answer_system_prompt=FINAL_ANSWER_SYSTEM_PROMPT,
+            problem,
+            planning_prompt_template=PLANNING_PROMPT_TEMPLATE,
+            math_system_prompt=MATH_SYSTEM_PROMPT,
+            tool_selector_prompt=TOOL_SELECTOR_PROMPT,
+            compute_selector_prompt=COMPUTE_SELECTOR_PROMPT,
+            reactive_instruction_prompt=REACTIVE_INSTRUCTION_PROMPT,
+            cot_instruction_prompt=COT_INSTRUCTION_PROMPT,
+            prm_scoring_prompt=PRM_SCORING_PROMPT,
+            final_answer_system_prompt=FINAL_ANSWER_SYSTEM_PROMPT,
+            direct_solve_prompt=DIRECT_SOLVE_PROMPT,
+            direct_solve_system_prompt=DIRECT_SOLVE_SYSTEM_PROMPT,
         )
         problem_time = time.time() - problem_start
         
@@ -276,9 +284,7 @@ def create_agent_from_config(config: Dict):
         return create_llm_client(DictConfig(config["client"]))
     
     agent = MathAgent(
-        client_factory=client_factory(),
-        # mode=config["agent"]["mode"],
-        # planning_frequency=config["agent"].get("planning_frequency"),
+        client_factory=client_factory,
         use_planner=config["agent"]["use_planner"],
         use_tool_selector=config["agent"]["use_tool_selector"],
         use_compute_selector=config["agent"]["use_compute_selector"],
@@ -286,50 +292,17 @@ def create_agent_from_config(config: Dict):
         fixed_compute=config["agent"].get("fixed_compute"),
         remember_cot=config["agent"]["remember_cot"],
         max_text_history=config["agent"]["max_text_history"],
-        # max_image_history=config["agent"]["max_image_history"],
-        # domain=config["agent"].get("domain", "math")
     )
     
     return agent
 
 
 def main():
-    config = {
-        "agent": {
-            "mode": "dynamic",
-            "use_planner": True,
-            "use_tool_selector": True,
-            "use_compute_selector": True,
-            "remember_cot": True,
-            "max_text_history": 16,
-            "max_image_history": 0,
-            "fixed_tool": None,
-            "fixed_compute": None,
-            "planning_frequency": None,
-            "domain": "math"
-        },
-        "eval": {
-            "num_workers": 16,
-            "output_dir": "multi_tool_results",
-            "max_problems": 250,
-            "split": "train",
-            "problem_types": None,
-            "difficulty_levels": None
-        },
-        "client": {
-            "client_name": "ollama",
-            "base_url": "http://localhost:11434/v1",
-            "model_id": "gemma3n:e4b",
-            "generate_kwargs": {
-                "temperature": 0.8,
-                "max_tokens": 4096
-            },
-            "timeout": 60,
-            "max_retries": 5,
-            "delay": 2,
-            "alternate_roles": False
-        }
-    }
+    parser = argparse.ArgumentParser(description="Evaluate Math Agent on MATH dataset")
+    parser.add_argument("--config", type=str, default="./config.yaml", help="Path to config file")
+    args = parser.parse_args()
+    
+    config = load_config(args.config)
     
     agent_factory = lambda: create_agent_from_config(config)
     

@@ -178,6 +178,8 @@ class MathAgent:
         cot_instruction_prompt=None,
         prm_scoring_prompt=None,
         final_answer_system_prompt=None,
+        direct_solve_prompt=None,
+        direct_solve_system_prompt=None,
     ):
         self.prompt_builder.set_problem(problem)
         
@@ -188,32 +190,37 @@ class MathAgent:
         
         messages = self.prompt_builder.get_prompt(self.plan, math_system_prompt)
         
-        if self.use_tool_selector:
-            reasoning, answer = self._execute_with_tools(
+        if not self.use_tool_selector and not self.fixed_tool:
+            reasoning, answer = self._execute_direct(
                 problem,
-                messages,
-                tool_selector_prompt,
-                tool_selector_system_prompt,
-                compute_selector_prompt,
-                compute_selector_system_prompt,
-                reactive_instruction_prompt,
-                cot_instruction_prompt,
-                prm_scoring_prompt,
-                final_answer_system_prompt,
+                direct_solve_prompt,
+                direct_solve_system_prompt,
             )
         else:
-            reasoning, answer = self._execute_simple(
-                problem,
-                messages,
-                compute_selector_prompt,
-                compute_selector_system_prompt,
-                reactive_instruction_prompt,
-                cot_instruction_prompt,
-                prm_scoring_prompt,
-            )
-        
-        self.prompt_builder.update_step(reasoning, answer)
-        
+            if self.use_tool_selector:
+                reasoning, answer = self._execute_with_tools(
+                    problem,
+                    messages,
+                    tool_selector_prompt,
+                    tool_selector_system_prompt,
+                    compute_selector_prompt,
+                    compute_selector_system_prompt,
+                    reactive_instruction_prompt,
+                    cot_instruction_prompt,
+                    prm_scoring_prompt,
+                    final_answer_system_prompt,
+                )
+            else:
+                reasoning, answer = self._execute_simple(
+                    problem,
+                    messages,
+                    compute_selector_prompt,
+                    compute_selector_system_prompt,
+                    reactive_instruction_prompt,
+                    cot_instruction_prompt,
+                    prm_scoring_prompt,
+                )
+                
         metadata = {
             "plan": self.plan,
             "use_planner": self.use_planner,
@@ -241,6 +248,36 @@ class MathAgent:
         plan, _, _ = self._extract_plan(completion)
         return plan
     
+    def _execute_direct(
+        self,
+        problem,
+        direct_solve_prompt,
+        direct_solve_system_prompt,
+    ):
+        direct_messages = [
+            {"role": "system", "content": direct_solve_system_prompt},
+            {"role": "user", "content": direct_solve_prompt.format(problem=problem)}
+        ]
+        
+        structured_response = self.client.generate_with_structured(
+            messages=direct_messages,
+            schema=FinalAnswer.model_json_schema()
+        )
+        
+        final_answer = get_field_from_completion(structured_response.completion, "answer")
+        
+        metadata = {
+            "tool": "direct",
+            "compute_strategy": "direct",
+            "compute_config": {"strategy": "none", "param": 0},
+        }
+        
+        self.tools_used = ["direct"]
+        self.compute_configs_used.append({"strategy": "none", "param": 0})
+        self.compute_metadata_history.append(metadata)
+        
+        return "", final_answer
+
     def _execute_simple(
         self,
         problem,
@@ -250,6 +287,7 @@ class MathAgent:
         reactive_instruction_prompt,
         cot_instruction_prompt,
         prm_scoring_prompt,
+        final_answer_system_prompt,
     ):
         tool_name = self.fixed_tool if self.fixed_tool else "cot"
         self.tools_used = [tool_name]
@@ -299,10 +337,41 @@ class MathAgent:
                 prm_scoring_prompt,
             )
             metadata["tool"] = tool_name
+            reasoning = metadata.get('chosen_reasoning', '')
         
         self.compute_metadata_history.append(metadata)
         
-        return action, action
+        full_reasoning = f"\n--- {tool_name.upper()} OUTPUT ---\nAction: {action}\nReasoning: {reasoning}"
+        
+        final_messages = [
+            {"role": "system", "content": final_answer_system_prompt},
+            {
+                "role": "user",
+                "content": f"""QUESTION/PROBLEM:
+                {problem}
+
+                PLAN FOLLOWED:
+                {self.plan if self.plan else "No plan was created."}
+
+                FULL REASONING AND ANALYSIS:
+                {full_reasoning}
+
+                ---
+
+                Now analyze the question, the plan that was followed, and all the reasoning provided above. Based on this complete analysis, provide ONLY the final answer in the following JSON format with no additional explanation or text:
+
+                {{"answer": "<final_answer_here>"}}"""
+            }
+        ]
+        
+        structured_response = self.client.generate_with_structured(
+            messages=final_messages,
+            schema=FinalAnswer.model_json_schema()
+        )
+        
+        final_answer = get_field_from_completion(structured_response.completion, "answer")
+        
+        return full_reasoning, final_answer
     
     def _execute_with_tools(
         self,
@@ -458,16 +527,16 @@ class MathAgent:
             }
         ]
         
-        print("=============================================================================================")
-        print("Full Reasoning:\n", full_reasoning)
-        print("=============================================================================================")
+        # print("=============================================================================================")
+        # print("Full Reasoning:\n", full_reasoning)
+        # print("=============================================================================================")
         
         structured_response = self.client.generate_with_structured(
             messages=final_messages,
             schema=FinalAnswer.model_json_schema()
         )
         
-        print("Final Answer Structured Response:", structured_response)
+        # print("Final Answer Structured Response:", structured_response)
 
         final_answer = get_field_from_completion(structured_response.completion, "answer")
         
