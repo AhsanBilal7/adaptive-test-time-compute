@@ -1,0 +1,32 @@
+agent:
+  mode: direct
+  use_planner: false
+  use_tool_selector: false
+  use_compute_selector: false
+  remember_cot: true
+  max_text_history: 16
+  max_image_history: 0
+  fixed_tool: null
+  fixed_compute: null
+  planning_frequency: null
+  domain: math
+
+eval:
+  num_workers: 16
+  output_dir: direct_results
+  max_problems: null
+  split: train
+  problem_types: null
+  difficulty_levels: null
+
+client:
+  client_name: ollama
+  base_url: http://localhost:11434/v1
+  model_id: gemma3n:e4b
+  generate_kwargs:
+    temperature: 0.8
+    max_tokens: 4096
+  timeout: 60
+  max_retries: 5
+  delay: 2
+  alternate_roles: false

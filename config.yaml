@@ -20,7 +20,7 @@
 # eval:
 #   num_workers: 16
 #   output_dir: direct_results
-#   max_problems: 100
+#   max_problems: null
 #   split: train
 #   problem_types: null
 #   difficulty_levels: null
@@ -56,7 +56,7 @@
 # eval:
 #   num_workers: 16
 #   output_dir: fixed_tool_results
-#   max_problems: 250
+#   max_problems: null
 #   split: train
 #   problem_types: null
 #   difficulty_levels: null
@@ -94,7 +94,7 @@
 # eval:
 #   num_workers: 16
 #   output_dir: fixed_compute_results
-#   max_problems: 250
+#   max_problems: null
 #   split: train
 #   problem_types: null
 #   difficulty_levels: null
@@ -130,7 +130,7 @@ agent:
 eval:
   num_workers: 16
   output_dir: dynamic_results
-  max_problems: 250
+  max_problems: null
   split: train
   problem_types: null
   difficulty_levels: null
