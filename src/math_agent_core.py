@@ -44,7 +44,8 @@ def _provided(x):
 @dataclass
 class MathResponse:
     reasoning: Optional[str]
-    answer: str
+    answer: str  # Structured answer (from JSON schema)
+    answer_unstructured: str  # Unstructured answer (raw string in competition format)
     plan: Optional[str]
     metadata: Dict[str, Any]
 
@@ -179,6 +180,8 @@ class MathAgent:
         prm_scoring_prompt=None,
         final_answer_system_prompt=None,
         final_answer_user_prompt=None,
+        unstructured_final_answer_system_prompt=None,
+        unstructured_final_answer_user_prompt=None,
         direct_solve_prompt=None,
         direct_solve_system_prompt=None,
     ):
@@ -192,14 +195,16 @@ class MathAgent:
         messages = self.prompt_builder.get_prompt(self.plan, math_system_prompt)
         
         if not self.use_tool_selector and not self.fixed_tool:
-            reasoning, answer = self._execute_direct(
+            reasoning, answer_structured, answer_unstructured = self._execute_direct(
                 problem,
                 direct_solve_prompt,
                 direct_solve_system_prompt,
+                unstructured_final_answer_system_prompt,
+                unstructured_final_answer_user_prompt,
             )
         else:
             if self.use_tool_selector:
-                reasoning, answer = self._execute_with_tools(
+                reasoning, answer_structured, answer_unstructured = self._execute_with_tools(
                     problem,
                     messages,
                     tool_selector_prompt,
@@ -211,9 +216,11 @@ class MathAgent:
                     prm_scoring_prompt,
                     final_answer_system_prompt,
                     final_answer_user_prompt,
+                    unstructured_final_answer_system_prompt,
+                    unstructured_final_answer_user_prompt,
                 )
             else:
-                reasoning, answer = self._execute_simple(
+                reasoning, answer_structured, answer_unstructured = self._execute_simple(
                     problem,
                     messages,
                     compute_selector_prompt,
@@ -223,6 +230,8 @@ class MathAgent:
                     prm_scoring_prompt,
                     final_answer_system_prompt,
                     final_answer_user_prompt,
+                    unstructured_final_answer_system_prompt,
+                    unstructured_final_answer_user_prompt,
                 )
                 
         metadata = {
@@ -239,7 +248,8 @@ class MathAgent:
         
         return MathResponse(
             reasoning=reasoning,
-            answer=answer,
+            answer=answer_structured,
+            answer_unstructured=answer_unstructured,
             plan=self.plan,
             metadata=metadata
         )
@@ -257,7 +267,10 @@ class MathAgent:
         problem,
         direct_solve_prompt,
         direct_solve_system_prompt,
+        unstructured_final_answer_system_prompt,
+        unstructured_final_answer_user_prompt,
     ):
+        # Get structured answer
         direct_messages = [
             {"role": "system", "content": direct_solve_system_prompt},
             {"role": "user", "content": direct_solve_prompt.format(problem=problem)}
@@ -268,7 +281,23 @@ class MathAgent:
             schema=FinalAnswer.model_json_schema()
         )
         
-        final_answer = get_field_from_completion(structured_response.completion, "answer")
+        final_answer_structured = get_field_from_completion(structured_response.completion, "answer")
+        
+        # Get unstructured answer
+        unstructured_messages = [
+            {"role": "system", "content": unstructured_final_answer_system_prompt},
+            {
+                "role": "user",
+                "content": unstructured_final_answer_user_prompt.format(
+                    problem=problem,
+                    plan="No plan was created.",
+                    full_reasoning="Direct solution approach used."
+                )
+            }
+        ]
+        
+        unstructured_response = self.client.generate(unstructured_messages)
+        final_answer_unstructured = unstructured_response.completion if hasattr(unstructured_response, "completion") else str(unstructured_response)
         
         metadata = {
             "tool": "direct",
@@ -280,7 +309,7 @@ class MathAgent:
         self.compute_configs_used.append({"strategy": "none", "param": 0})
         self.compute_metadata_history.append(metadata)
         
-        return "", final_answer
+        return "", final_answer_structured, final_answer_unstructured
 
     def _execute_simple(
         self,
@@ -293,6 +322,8 @@ class MathAgent:
         prm_scoring_prompt,
         final_answer_system_prompt,
         final_answer_user_prompt,
+        unstructured_final_answer_system_prompt,
+        unstructured_final_answer_user_prompt,
     ):
         tool_name = self.fixed_tool if self.fixed_tool else "cot"
         self.tools_used = [tool_name]
@@ -348,7 +379,8 @@ class MathAgent:
         
         full_reasoning = f"\n--- {tool_name.upper()} OUTPUT ---\nAction: {action}\nReasoning: {reasoning}"
         
-        final_messages = [
+        # Get structured answer
+        final_messages_structured = [
             {"role": "system", "content": final_answer_system_prompt},
             {
                 "role": "user",
@@ -361,13 +393,29 @@ class MathAgent:
         ]
         
         structured_response = self.client.generate_with_structured(
-            messages=final_messages,
+            messages=final_messages_structured,
             schema=FinalAnswer.model_json_schema()
         )
         
-        final_answer = get_field_from_completion(structured_response.completion, "answer")
+        final_answer_structured = get_field_from_completion(structured_response.completion, "answer")
         
-        return full_reasoning, final_answer
+        # Get unstructured answer
+        final_messages_unstructured = [
+            {"role": "system", "content": unstructured_final_answer_system_prompt},
+            {
+                "role": "user",
+                "content": unstructured_final_answer_user_prompt.format(
+                    problem=problem,
+                    plan=self.plan if self.plan else "No plan was created.",
+                    full_reasoning=full_reasoning
+                )
+            }
+        ]
+        
+        unstructured_response = self.client.generate(final_messages_unstructured)
+        final_answer_unstructured = unstructured_response.completion if hasattr(unstructured_response, "completion") else str(unstructured_response)
+        
+        return full_reasoning, final_answer_structured, final_answer_unstructured
     
     def _execute_with_tools(
         self,
@@ -382,6 +430,8 @@ class MathAgent:
         prm_scoring_prompt,
         final_answer_system_prompt,
         final_answer_user_prompt,
+        unstructured_final_answer_system_prompt,
+        unstructured_final_answer_user_prompt,
     ):
         tool_selection = self.tool_selector.select_tool(
             problem,
@@ -394,7 +444,9 @@ class MathAgent:
         
         selected_tools = tool_selection.get("tools", ["reactive_actor"])
         self.tools_used = selected_tools
-        
+        # print("======================================")
+        # print("Selected tools:", selected_tools)
+        # print("======================================")
         accumulated_reasoning = []
         
         for tool_name in selected_tools:
@@ -503,7 +555,8 @@ class MathAgent:
         
         full_reasoning = "\n".join(accumulated_reasoning)
         
-        final_messages = [
+        # Get structured answer
+        final_messages_structured = [
             {"role": "system", "content": final_answer_system_prompt},
             {
                 "role": "user",
@@ -516,13 +569,29 @@ class MathAgent:
         ]
         
         structured_response = self.client.generate_with_structured(
-            messages=final_messages,
+            messages=final_messages_structured,
             schema=FinalAnswer.model_json_schema()
         )
 
-        final_answer = get_field_from_completion(structured_response.completion, "answer")
+        final_answer_structured = get_field_from_completion(structured_response.completion, "answer")
         
-        return full_reasoning, final_answer
+        # Get unstructured answer
+        final_messages_unstructured = [
+            {"role": "system", "content": unstructured_final_answer_system_prompt},
+            {
+                "role": "user",
+                "content": unstructured_final_answer_user_prompt.format(
+                    problem=problem,
+                    plan=self.plan if self.plan else "No plan was created.",
+                    full_reasoning=full_reasoning
+                )
+            }
+        ]
+        
+        unstructured_response = self.client.generate(final_messages_unstructured)
+        final_answer_unstructured = unstructured_response.completion if hasattr(unstructured_response, "completion") else str(unstructured_response)
+        
+        return full_reasoning, final_answer_structured, final_answer_unstructured
     
     def _extract_plan(self, text):
         plan_match = re.search(r"<plan>(.*?)</plan>", text, re.IGNORECASE | re.DOTALL)

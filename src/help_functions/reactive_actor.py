@@ -22,6 +22,9 @@ class ReactiveActorReasoner:
                 else:
                     messages_copy[-1] = {"role": role, "content": new_content}
         
+        # print("======================================")
+        # print("ReactiveActorReasoner Prompt Messages:", messages_copy)
+        # print("======================================")
         response = self.client.generate(messages_copy)
         completion = response.completion if hasattr(response, "completion") else str(response)
         

@@ -36,7 +36,7 @@ class PRMModel:
         if plan:
             parts.append(f"Current Plan:\n{plan}")
         
-        parts.append(f"Observation:\n{obs}")
+        parts.append(f"Given Problem:\n{obs}")
         
         if context:
             parts.append(f"Context:\n{context}")

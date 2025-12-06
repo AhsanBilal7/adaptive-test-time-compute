@@ -29,6 +29,12 @@ class CoTReasoner:
         action, reasoning = self._extract_action_and_reasoning(completion)
         self.reasoning_history.append(reasoning)
         
+        # print("===== CoT Reasoner Output =====")
+        # print("Generated Action:", action)
+        # print("Generated Reasoning:", reasoning)
+        # print("Messaeges Used:", messages_copy)
+        # print("================================")
+
         return action, reasoning
     
     def _extract_action_and_reasoning(self, text):
@@ -44,6 +50,7 @@ class CoTReasoner:
         action = self._extract_action(action_text)
         return action, reasoning
     
+
     def _extract_action(self, text):
         action_match = re.search(r"<action>(.*?)</action>", text, re.IGNORECASE | re.DOTALL)
         if action_match:

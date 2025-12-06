@@ -62,6 +62,10 @@ class ToolSelector:
             "selection": dict(selection),
         })
         
+        # print("======================================")
+        # print("ToolSelector Prompt Messages:", messages)
+        # print("ToolSelector selected tools:", selection)
+        # print("======================================")
         return selection
     
     def get_tool_distribution(self):

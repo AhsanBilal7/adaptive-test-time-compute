@@ -100,7 +100,13 @@ class BestOfNStrategy(ComputeStrategy):
         best_idx = max(order, key=lambda i: scores[i])
         best_action = candidates[best_idx]
         best_reasoning = reasoning_texts[best_idx]
-        
+
+        # print("=======================================")
+        # print("Messages:", messages)
+        # print("Given Problem:", obs)
+        # print("All Rollout Reasons for Seed Action:",reasoning_texts)
+        # print("Rollout Reasoning:",  best_reasoning)
+        # print("=======================================")
         metadata = {
             "strategy": "best_of_n",
             "compute_config": dict(config),
@@ -241,7 +247,8 @@ class LookaheadStrategy(ComputeStrategy):
             local_idx = max(range(len(rollouts)), key=lambda i: scores[i])
             chosen_rollout = rollouts[local_idx]
             chosen_rollout_reasoning = rollouts_reasoning[local_idx]
-            
+
+
             per_seed_best.append((a, chosen_rollout, scores[local_idx], chosen_rollout_reasoning))
             all_rollouts.append({
                 "seed": a, 
