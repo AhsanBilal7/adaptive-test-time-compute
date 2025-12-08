@@ -328,6 +328,15 @@ def evaluate_math_dataset(
     stats_by_type = {}
     stats_by_level = {}
     
+    # NEW: Additional tracking metrics
+    tool_usage_stats = {}
+    compute_strategy_stats = {}
+    reasoning_length_stats = []
+    verification_stats = {"attempted": 0, "passed": 0, "failed": 0}
+    plan_usage_stats = {"with_plan": 0, "without_plan": 0}
+    compute_param_distribution = {}
+    error_analysis = {"extraction_failures": 0, "timeout_errors": 0}
+    
     csv_path = output_dir / (
         f"mode-{agent_config['mode']}_planner-{agent_config['use_planner']}_"
         f"toolsel-{agent_config['use_tool_selector']}_computesel-{agent_config['use_compute_selector']}_"
@@ -340,7 +349,8 @@ def evaluate_math_dataset(
         "gold_answer", "gold_answer_normalized",
         "predicted_answer_structured", 
         "predicted_answer_normalized",
-        "is_correct", "cumulative_accuracy", "time_seconds"
+        "is_correct", "cumulative_accuracy", "time_seconds",
+        "reasoning_length", "word_count", "tools_used", "compute_strategy"
     ]
     
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
@@ -405,6 +415,7 @@ def evaluate_math_dataset(
         # If extraction failed, fall back to structured answer
         if predicted_answer_normalized == "[invalidanswer]":
             predicted_answer_normalized = response.answer
+            error_analysis["extraction_failures"] += 1
         
         # Check equivalence using LMEval approach
         is_correct = check_answer_equivalence(response.answer_unstructured, gold_answer_extracted)
@@ -425,6 +436,48 @@ def evaluate_math_dataset(
         if is_correct:
             stats_by_level[level]["correct"] += 1
         
+        # NEW: Track tool usage
+        for tool in response.metadata.get("tools_used", []):
+            tool_usage_stats[tool] = tool_usage_stats.get(tool, 0) + 1
+        
+        # NEW: Track compute strategies
+        for config in response.metadata.get("compute_configs_used", []):
+            strategy = config.get("strategy", "unknown")
+            param = config.get("param", 0)
+            
+            compute_strategy_stats[strategy] = compute_strategy_stats.get(strategy, 0) + 1
+            
+            # Track parameter distribution
+            key = f"{strategy}_param_{param}"
+            compute_param_distribution[key] = compute_param_distribution.get(key, 0) + 1
+        
+        # NEW: Track reasoning length
+        reasoning_length = len(response.reasoning) if response.reasoning else 0
+        word_count = len(response.reasoning.split()) if response.reasoning else 0
+        reasoning_length_stats.append({
+            "problem_id": idx,
+            "length": reasoning_length,
+            "word_count": word_count,
+            "is_correct": is_correct
+        })
+        
+        # NEW: Track plan usage
+        if response.plan:
+            plan_usage_stats["with_plan"] += 1
+        else:
+            plan_usage_stats["without_plan"] += 1
+        
+        # NEW: Track verification usage
+        compute_metadata = response.metadata.get("compute_metadata", [])
+        for meta in compute_metadata:
+            if meta.get("tool") in ["numeric_verifier", "verifier"]:
+                verification_stats["attempted"] += 1
+                result = meta.get("result", {})
+                if isinstance(result, dict) and result.get("is_valid"):
+                    verification_stats["passed"] += 1
+                else:
+                    verification_stats["failed"] += 1
+        
         accuracy = correct / total * 100
 
         print(f"\n--- RESPONSE DETAILS ---")
@@ -440,6 +493,7 @@ def evaluate_math_dataset(
         print(f"Correct: {'✅' if is_correct else '❌'}")
         print(f"Overall Accuracy: {accuracy:.2f}% ({correct}/{total})")
         print(f"Time: {problem_time:.2f}s")
+        print(f"Reasoning Length: {reasoning_length} chars, {word_count} words")
         
         result = {
             "problem_id": idx,
@@ -454,6 +508,8 @@ def evaluate_math_dataset(
             "predicted_answer_unstructured": response.answer_unstructured,
             "predicted_answer_normalized": predicted_answer_normalized,
             "reasoning": response.reasoning,
+            "reasoning_length": reasoning_length,
+            "word_count": word_count,
             "plan": response.plan,
             "is_correct": is_correct,
             "time_seconds": problem_time,
@@ -462,6 +518,11 @@ def evaluate_math_dataset(
             "metadata": response.metadata
         }
         results.append(result)
+        
+        # Get primary compute strategy for CSV
+        primary_compute_strategy = "none"
+        if response.metadata.get("compute_configs_used"):
+            primary_compute_strategy = response.metadata["compute_configs_used"][0].get("strategy", "none")
         
         csv_row = {
             "problem_id": idx,
@@ -473,7 +534,11 @@ def evaluate_math_dataset(
             "predicted_answer_normalized": predicted_answer_normalized,
             "is_correct": is_correct,
             "cumulative_accuracy": f"{accuracy:.2f}",
-            "time_seconds": f"{problem_time:.2f}"
+            "time_seconds": f"{problem_time:.2f}",
+            "reasoning_length": reasoning_length,
+            "word_count": word_count,
+            "tools_used": ",".join(response.metadata.get("tools_used", [])),
+            "compute_strategy": primary_compute_strategy
         }
         
         with open(csv_path, "a", newline="", encoding="utf-8") as f:
@@ -494,8 +559,114 @@ def evaluate_math_dataset(
         for level, stats in stats_by_level.items()
     }
     
+    # NEW: Calculate additional aggregate statistics
+    
+    # Tool usage percentages
+    total_tool_calls = sum(tool_usage_stats.values())
+    tool_usage_percentages = {
+        tool: (count / total_tool_calls * 100) if total_tool_calls > 0 else 0
+        for tool, count in tool_usage_stats.items()
+    }
+    
+    # Compute strategy percentages
+    total_compute_calls = sum(compute_strategy_stats.values())
+    compute_strategy_percentages = {
+        strategy: (count / total_compute_calls * 100) if total_compute_calls > 0 else 0
+        for strategy, count in compute_strategy_stats.items()
+    }
+    
+    # Reasoning length analysis
+    avg_reasoning_length = sum(r["length"] for r in reasoning_length_stats) / len(reasoning_length_stats) if reasoning_length_stats else 0
+    avg_word_count = sum(r["word_count"] for r in reasoning_length_stats) / len(reasoning_length_stats) if reasoning_length_stats else 0
+    
+    # Reasoning length by correctness
+    correct_reasoning_lengths = [r["length"] for r in reasoning_length_stats if r["is_correct"]]
+    incorrect_reasoning_lengths = [r["length"] for r in reasoning_length_stats if not r["is_correct"]]
+    
+    avg_correct_reasoning_length = sum(correct_reasoning_lengths) / len(correct_reasoning_lengths) if correct_reasoning_lengths else 0
+    avg_incorrect_reasoning_length = sum(incorrect_reasoning_lengths) / len(incorrect_reasoning_lengths) if incorrect_reasoning_lengths else 0
+    
+    # Compute intensity metrics
+    total_compute_params = sum(
+        config.get("param", 0)
+        for result in results
+        for config in result.get("compute_configs_used", [])
+    )
+    avg_compute_params_per_problem = total_compute_params / total if total > 0 else 0
+    
+    # Accuracy by compute strategy
+    accuracy_by_compute_strategy = {}
+    for result in results:
+        for config in result.get("compute_configs_used", []):
+            strategy = config.get("strategy", "unknown")
+            if strategy not in accuracy_by_compute_strategy:
+                accuracy_by_compute_strategy[strategy] = {"correct": 0, "total": 0}
+            accuracy_by_compute_strategy[strategy]["total"] += 1
+            if result["is_correct"]:
+                accuracy_by_compute_strategy[strategy]["correct"] += 1
+    
+    for strategy in accuracy_by_compute_strategy:
+        stats = accuracy_by_compute_strategy[strategy]
+        stats["accuracy"] = (stats["correct"] / stats["total"] * 100) if stats["total"] > 0 else 0
+    
+    # Accuracy by tool
+    accuracy_by_tool = {}
+    for result in results:
+        for tool in result.get("tools_used", []):
+            if tool not in accuracy_by_tool:
+                accuracy_by_tool[tool] = {"correct": 0, "total": 0}
+            accuracy_by_tool[tool]["total"] += 1
+            if result["is_correct"]:
+                accuracy_by_tool[tool]["correct"] += 1
+    
+    for tool in accuracy_by_tool:
+        stats = accuracy_by_tool[tool]
+        stats["accuracy"] = (stats["correct"] / stats["total"] * 100) if stats["total"] > 0 else 0
+    
+    # Accuracy with/without plan
+    accuracy_with_plan = sum(1 for r in results if r["is_correct"] and r["plan"]) / plan_usage_stats["with_plan"] * 100 if plan_usage_stats["with_plan"] > 0 else 0
+    accuracy_without_plan = sum(1 for r in results if r["is_correct"] and not r["plan"]) / plan_usage_stats["without_plan"] * 100 if plan_usage_stats["without_plan"] > 0 else 0
+    
+    # Verification effectiveness
+    verification_effectiveness = {
+        "total_problems_with_verification": verification_stats["attempted"],
+        "verification_pass_rate": (verification_stats["passed"] / verification_stats["attempted"] * 100) if verification_stats["attempted"] > 0 else 0,
+        **verification_stats
+    }
+    
+    # Time analysis
+    problem_times = [r["time_seconds"] for r in results]
+    time_analysis = {
+        "avg_time": sum(problem_times) / len(problem_times) if problem_times else 0,
+        "min_time": min(problem_times) if problem_times else 0,
+        "max_time": max(problem_times) if problem_times else 0,
+        "median_time": sorted(problem_times)[len(problem_times)//2] if problem_times else 0,
+        "total_time": total_time
+    }
+    
+    # Time by correctness
+    correct_times = [r["time_seconds"] for r in results if r["is_correct"]]
+    incorrect_times = [r["time_seconds"] for r in results if not r["is_correct"]]
+    
+    time_by_correctness = {
+        "avg_time_correct": sum(correct_times) / len(correct_times) if correct_times else 0,
+        "avg_time_incorrect": sum(incorrect_times) / len(incorrect_times) if incorrect_times else 0
+    }
+    
+    # Compute efficiency
+    compute_efficiency = {
+        "accuracy_per_compute_param": final_accuracy / avg_compute_params_per_problem if avg_compute_params_per_problem > 0 else 0,
+        "correct_per_second": correct / total_time if total_time > 0 else 0,
+        "total_compute_params_used": total_compute_params,
+        "avg_compute_params_per_problem": avg_compute_params_per_problem
+    }
+    
+    # Error analysis
+    error_analysis["extraction_failure_rate"] = (error_analysis["extraction_failures"] / total * 100) if total > 0 else 0
+    
     agent_stats = agent.get_stats()
     agent_stats.update({
+        # Existing metrics
         "total_problems": total,
         "correct": correct,
         "accuracy": final_accuracy,
@@ -504,7 +675,72 @@ def evaluate_math_dataset(
         "stats_by_type": stats_by_type,
         "stats_by_level": stats_by_level,
         "accuracy_by_type": accuracy_by_type,
-        "accuracy_by_level": accuracy_by_level
+        "accuracy_by_level": accuracy_by_level,
+        
+        # NEW: Tool usage metrics
+        "tool_usage": {
+            "counts": tool_usage_stats,
+            "percentages": tool_usage_percentages,
+            "accuracy_by_tool": accuracy_by_tool
+        },
+        
+        # NEW: Compute strategy metrics
+        "compute_strategies": {
+            "counts": compute_strategy_stats,
+            "percentages": compute_strategy_percentages,
+            "param_distribution": compute_param_distribution,
+            "accuracy_by_strategy": accuracy_by_compute_strategy,
+            "total_compute_params": total_compute_params,
+            "avg_params_per_problem": avg_compute_params_per_problem
+        },
+        
+        # NEW: Reasoning analysis
+        "reasoning_analysis": {
+            "avg_length_chars": avg_reasoning_length,
+            "avg_word_count": avg_word_count,
+            "avg_length_correct": avg_correct_reasoning_length,
+            "avg_length_incorrect": avg_incorrect_reasoning_length,
+            "length_correlation_with_accuracy": avg_correct_reasoning_length / avg_incorrect_reasoning_length if avg_incorrect_reasoning_length > 0 else 0,
+            "detailed_stats": reasoning_length_stats
+        },
+        
+        # NEW: Planning analysis
+        "planning_analysis": {
+            "usage": plan_usage_stats,
+            "accuracy_with_plan": accuracy_with_plan,
+            "accuracy_without_plan": accuracy_without_plan,
+            "plan_effectiveness_gain": accuracy_with_plan - accuracy_without_plan
+        },
+        
+        # NEW: Verification metrics
+        "verification": verification_effectiveness,
+        
+        # NEW: Time analysis
+        "time_analysis": {
+            **time_analysis,
+            **time_by_correctness,
+            "time_efficiency": {
+                "seconds_per_correct_answer": total_time / correct if correct > 0 else 0,
+                "time_overhead_for_incorrect": time_by_correctness["avg_time_incorrect"] - time_by_correctness["avg_time_correct"]
+            }
+        },
+        
+        # NEW: Compute efficiency
+        "compute_efficiency": compute_efficiency,
+        
+        # NEW: Error analysis
+        "error_analysis": error_analysis,
+        
+        # NEW: Configuration summary
+        "configuration": {
+            "mode": agent_config.get("mode"),
+            "use_planner": agent_config.get("use_planner"),
+            "use_tool_selector": agent_config.get("use_tool_selector"),
+            "use_compute_selector": agent_config.get("use_compute_selector"),
+            "fixed_tool": agent_config.get("fixed_tool"),
+            "fixed_compute": agent_config.get("fixed_compute"),
+            "planning_frequency": agent_config.get("planning_frequency")
+        }
     })
     
     final_results = {
@@ -530,12 +766,46 @@ def evaluate_math_dataset(
     print(f"Overall Accuracy: {final_accuracy:.2f}%")
     print(f"Total time: {total_time:.2f}s")
     print(f"Avg time per problem: {total_time / total:.2f}s")
-    print(f"\nAccuracy by Problem Subject:")
+    
+    print(f"\n--- ACCURACY BY PROBLEM SUBJECT ---")
     for ptype, acc in accuracy_by_type.items():
         print(f"  {ptype}: {acc:.2f}% ({stats_by_type[ptype]['correct']}/{stats_by_type[ptype]['total']})")
-    print(f"\nAccuracy by Difficulty Level:")
+    
+    print(f"\n--- ACCURACY BY DIFFICULTY LEVEL ---")
     for level, acc in accuracy_by_level.items():
         print(f"  {level}: {acc:.2f}% ({stats_by_level[level]['correct']}/{stats_by_level[level]['total']})")
+    
+    print(f"\n--- TOOL USAGE ---")
+    for tool, count in tool_usage_stats.items():
+        percentage = tool_usage_percentages[tool]
+        acc = accuracy_by_tool.get(tool, {}).get("accuracy", 0)
+        print(f"  {tool}: {count} times ({percentage:.1f}%), Accuracy: {acc:.2f}%")
+    
+    print(f"\n--- COMPUTE STRATEGIES ---")
+    for strategy, count in compute_strategy_stats.items():
+        percentage = compute_strategy_percentages[strategy]
+        acc = accuracy_by_compute_strategy.get(strategy, {}).get("accuracy", 0)
+        print(f"  {strategy}: {count} times ({percentage:.1f}%), Accuracy: {acc:.2f}%")
+    
+    print(f"\n--- PLANNING EFFECTIVENESS ---")
+    print(f"  With plan: {plan_usage_stats['with_plan']} problems, Accuracy: {accuracy_with_plan:.2f}%")
+    print(f"  Without plan: {plan_usage_stats['without_plan']} problems, Accuracy: {accuracy_without_plan:.2f}%")
+    print(f"  Plan effectiveness gain: {accuracy_with_plan - accuracy_without_plan:+.2f}%")
+    
+    print(f"\n--- REASONING ANALYSIS ---")
+    print(f"  Avg reasoning length: {avg_reasoning_length:.0f} chars, {avg_word_count:.0f} words")
+    print(f"  Avg length (correct): {avg_correct_reasoning_length:.0f} chars")
+    print(f"  Avg length (incorrect): {avg_incorrect_reasoning_length:.0f} chars")
+    
+    print(f"\n--- COMPUTE EFFICIENCY ---")
+    print(f"  Total compute params used: {total_compute_params}")
+    print(f"  Avg compute params per problem: {avg_compute_params_per_problem:.2f}")
+    print(f"  Accuracy per compute param: {compute_efficiency['accuracy_per_compute_param']:.2f}")
+    print(f"  Correct answers per second: {compute_efficiency['correct_per_second']:.4f}")
+    
+    print(f"\n--- ERROR ANALYSIS ---")
+    print(f"  Extraction failures: {error_analysis['extraction_failures']} ({error_analysis['extraction_failure_rate']:.2f}%)")
+    
     print(f"\nResults saved to: {final_path}")
     print(f"Live CSV results saved to: {csv_path}")
     
