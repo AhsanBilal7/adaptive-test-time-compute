@@ -154,6 +154,10 @@
                                         │  • Log results    │
                                         └───────────────────┘
 
+### 
+
+To grade solutions, we use the minerva_math functions from LMEval [22] to extract the model’s final answer. We then check correctness if the extracted answer is an exact string match to the ground truth, or if the is_equiv function from minerva_math in LMEval evaluates to true.
+
 
 #### Run the experiments
 ```
