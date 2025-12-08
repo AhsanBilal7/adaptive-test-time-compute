@@ -1,0 +1,583 @@
+import yaml
+import argparse
+from typing import Dict, Any
+from omegaconf import DictConfig
+
+from BALROG.balrog.client import create_llm_client
+from src.help_functions.prompts_templates import *
+
+from src.universal_agent import UniversalAgent
+from src.math_core import MATHCore
+from src.gsm8k_core import GSM8KCore
+import time
+import json
+import csv
+from pathlib import Path
+from typing import Optional, Dict, List, Any, Callable
+
+
+def evaluate_reasoning_agent(
+    agent_factory: Callable,
+    dataset: List[Dict[str, Any]],
+    output_dir: str,
+    agent_config: Dict[str, Any],
+    check_answer_fn: Callable[[str, str], bool],
+    extract_prediction_fn: Callable[[Any, Dict], str],
+    csv_filename_template: str,
+    json_filename_template: str,
+    prompt_kwargs: Dict[str, Any],
+    problem_key: str = "problem",
+    gold_answer_key: str = "gold_answer_extracted",
+    problem_type_key: str = "problem_type",
+    difficulty_key: str = "level",
+    extra_problem_keys: Optional[List[str]] = None,
+    verbose: bool = True,
+):
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    agent = agent_factory()
+    
+    results = []
+    correct = 0
+    total = 0
+    
+    stats_by_type = {}
+    stats_by_level = {}
+    
+    tool_usage_stats = {}
+    compute_strategy_stats = {}
+    reasoning_length_stats = []
+    verification_stats = {"attempted": 0, "passed": 0, "failed": 0}
+    plan_usage_stats = {"with_plan": 0, "without_plan": 0}
+    compute_param_distribution = {}
+    error_analysis = {"extraction_failures": 0, "timeout_errors": 0}
+    
+    csv_path = output_dir / csv_filename_template.format(**agent_config)
+    csv_headers = [
+        "problem_id", problem_type_key, difficulty_key,
+        "gold_answer", "predicted_answer",
+        "is_correct", "cumulative_accuracy", "time_seconds",
+        "reasoning_length", "word_count", "tools_used", "compute_strategy"
+    ]
+    
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=csv_headers)
+        writer.writeheader()
+    
+    if verbose:
+        print(f"[INFO] CSV results will be saved to: {csv_path}")
+        print(f"[INFO] Evaluating {len(dataset)} problems...")
+    
+    start_time = time.time()
+    
+    for problem_data in dataset:
+        problem_id = problem_data.get("problem_id", total)
+        problem = problem_data[problem_key]
+        gold_answer = problem_data[gold_answer_key]
+        problem_type = problem_data.get(problem_type_key, "unknown")
+        level = problem_data.get(difficulty_key, "unknown")
+        
+        if verbose:
+            print(f"\n{'='*60}")
+            print(f"[INFO] Problem {problem_id + 1}/{len(dataset)}")
+            print(f"{problem_type_key}: {problem_type}, {difficulty_key}: {level}")
+            print(f"Problem: {problem[:150]}...")
+        
+        agent.reset()
+        
+        problem_start = time.time()
+        response = agent.solve(problem, **prompt_kwargs)
+        problem_time = time.time() - problem_start
+        
+        predicted_answer = extract_prediction_fn(response, problem_data)
+        
+        is_correct = check_answer_fn(predicted_answer, gold_answer)
+        
+        if is_correct:
+            correct += 1
+        total += 1
+        
+        if problem_type not in stats_by_type:
+            stats_by_type[problem_type] = {"correct": 0, "total": 0}
+        stats_by_type[problem_type]["total"] += 1
+        if is_correct:
+            stats_by_type[problem_type]["correct"] += 1
+        
+        if level not in stats_by_level:
+            stats_by_level[level] = {"correct": 0, "total": 0}
+        stats_by_level[level]["total"] += 1
+        if is_correct:
+            stats_by_level[level]["correct"] += 1
+        
+        for tool in response.metadata.get("tools_used", []):
+            tool_usage_stats[tool] = tool_usage_stats.get(tool, 0) + 1
+        
+        for config in response.metadata.get("compute_configs_used", []):
+            strategy = config.get("strategy", "unknown")
+            param = config.get("param", 0)
+            
+            compute_strategy_stats[strategy] = compute_strategy_stats.get(strategy, 0) + 1
+            
+            key = f"{strategy}_param_{param}"
+            compute_param_distribution[key] = compute_param_distribution.get(key, 0) + 1
+        
+        reasoning_length = len(response.reasoning) if response.reasoning else 0
+        word_count = len(response.reasoning.split()) if response.reasoning else 0
+        reasoning_length_stats.append({
+            "problem_id": problem_id,
+            "length": reasoning_length,
+            "word_count": word_count,
+            "is_correct": is_correct
+        })
+        
+        if response.plan:
+            plan_usage_stats["with_plan"] += 1
+        else:
+            plan_usage_stats["without_plan"] += 1
+        
+        compute_metadata = response.metadata.get("compute_metadata", [])
+        for meta in compute_metadata:
+            if meta.get("tool") in ["numeric_verifier", "verifier"]:
+                verification_stats["attempted"] += 1
+                result = meta.get("result", {})
+                if isinstance(result, dict) and result.get("is_valid"):
+                    verification_stats["passed"] += 1
+                else:
+                    verification_stats["failed"] += 1
+        
+        accuracy = correct / total * 100
+        
+        if verbose:
+            print(f"\n--- RESPONSE DETAILS ---")
+            print(f"Reasoning: {response.reasoning[:200]}..." if len(response.reasoning) > 200 else f"Reasoning: {response.reasoning}")
+            print(f"Plan: {response.plan}")
+            print(f"\n--- ANSWERS ---")
+            print(f"Predicted: {predicted_answer}")
+            print(f"Gold: {gold_answer}")
+            print(f"\n--- EVALUATION ---")
+            print(f"Correct: {'✅' if is_correct else '❌'}")
+            print(f"Overall Accuracy: {accuracy:.2f}% ({correct}/{total})")
+            print(f"Time: {problem_time:.2f}s")
+            print(f"Reasoning Length: {reasoning_length} chars, {word_count} words")
+        
+        result = {
+            "problem_id": problem_id,
+            "problem": problem,
+            problem_type_key: problem_type,
+            difficulty_key: level,
+            "gold_answer": gold_answer,
+            "predicted_answer": predicted_answer,
+            "reasoning": response.reasoning,
+            "reasoning_length": reasoning_length,
+            "word_count": word_count,
+            "plan": response.plan,
+            "is_correct": is_correct,
+            "time_seconds": problem_time,
+            "tools_used": response.metadata.get("tools_used", []),
+            "compute_configs_used": response.metadata.get("compute_configs_used", []),
+            "metadata": response.metadata
+        }
+        
+        if extra_problem_keys:
+            for key in extra_problem_keys:
+                if key in problem_data:
+                    result[key] = problem_data[key]
+        
+        results.append(result)
+        
+        primary_compute_strategy = "none"
+        if response.metadata.get("compute_configs_used"):
+            primary_compute_strategy = response.metadata["compute_configs_used"][0].get("strategy", "none")
+        
+        csv_row = {
+            "problem_id": problem_id,
+            problem_type_key: problem_type,
+            difficulty_key: level,
+            "gold_answer": gold_answer,
+            "predicted_answer": predicted_answer,
+            "is_correct": is_correct,
+            "cumulative_accuracy": f"{accuracy:.2f}",
+            "time_seconds": f"{problem_time:.2f}",
+            "reasoning_length": reasoning_length,
+            "word_count": word_count,
+            "tools_used": ",".join(response.metadata.get("tools_used", [])),
+            "compute_strategy": primary_compute_strategy
+        }
+        
+        with open(csv_path, "a", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=csv_headers)
+            writer.writerow(csv_row)
+    
+    total_time = time.time() - start_time
+    
+    final_accuracy = correct / total * 100 if total > 0 else 0
+    
+    accuracy_by_type = {
+        ptype: (stats["correct"] / stats["total"] * 100 if stats["total"] > 0 else 0)
+        for ptype, stats in stats_by_type.items()
+    }
+    
+    accuracy_by_level = {
+        level: (stats["correct"] / stats["total"] * 100 if stats["total"] > 0 else 0)
+        for level, stats in stats_by_level.items()
+    }
+    
+    total_tool_calls = sum(tool_usage_stats.values())
+    tool_usage_percentages = {
+        tool: (count / total_tool_calls * 100) if total_tool_calls > 0 else 0
+        for tool, count in tool_usage_stats.items()
+    }
+    
+    accuracy_by_tool = {}
+    for result in results:
+        for tool in result.get("tools_used", []):
+            if tool not in accuracy_by_tool:
+                accuracy_by_tool[tool] = {"correct": 0, "total": 0}
+            accuracy_by_tool[tool]["total"] += 1
+            if result["is_correct"]:
+                accuracy_by_tool[tool]["correct"] += 1
+    
+    for tool in accuracy_by_tool:
+        stats = accuracy_by_tool[tool]
+        stats["accuracy"] = (stats["correct"] / stats["total"] * 100) if stats["total"] > 0 else 0
+    
+    total_compute_calls = sum(compute_strategy_stats.values())
+    compute_strategy_percentages = {
+        strategy: (count / total_compute_calls * 100) if total_compute_calls > 0 else 0
+        for strategy, count in compute_strategy_stats.items()
+    }
+    
+    accuracy_by_compute_strategy = {}
+    for result in results:
+        for config in result.get("compute_configs_used", []):
+            strategy = config.get("strategy", "unknown")
+            if strategy not in accuracy_by_compute_strategy:
+                accuracy_by_compute_strategy[strategy] = {"correct": 0, "total": 0}
+            accuracy_by_compute_strategy[strategy]["total"] += 1
+            if result["is_correct"]:
+                accuracy_by_compute_strategy[strategy]["correct"] += 1
+    
+    for strategy in accuracy_by_compute_strategy:
+        stats = accuracy_by_compute_strategy[strategy]
+        stats["accuracy"] = (stats["correct"] / stats["total"] * 100) if stats["total"] > 0 else 0
+    
+    avg_reasoning_length = sum(r["length"] for r in reasoning_length_stats) / len(reasoning_length_stats) if reasoning_length_stats else 0
+    avg_word_count = sum(r["word_count"] for r in reasoning_length_stats) / len(reasoning_length_stats) if reasoning_length_stats else 0
+    
+    correct_reasoning_lengths = [r["length"] for r in reasoning_length_stats if r["is_correct"]]
+    incorrect_reasoning_lengths = [r["length"] for r in reasoning_length_stats if not r["is_correct"]]
+    
+    avg_correct_reasoning_length = sum(correct_reasoning_lengths) / len(correct_reasoning_lengths) if correct_reasoning_lengths else 0
+    avg_incorrect_reasoning_length = sum(incorrect_reasoning_lengths) / len(incorrect_reasoning_lengths) if incorrect_reasoning_lengths else 0
+    
+    total_compute_params = sum(
+        config.get("param", 0)
+        for result in results
+        for config in result.get("compute_configs_used", [])
+    )
+    avg_compute_params_per_problem = total_compute_params / total if total > 0 else 0
+    
+    accuracy_with_plan = sum(1 for r in results if r["is_correct"] and r["plan"]) / plan_usage_stats["with_plan"] * 100 if plan_usage_stats["with_plan"] > 0 else 0
+    accuracy_without_plan = sum(1 for r in results if r["is_correct"] and not r["plan"]) / plan_usage_stats["without_plan"] * 100 if plan_usage_stats["without_plan"] > 0 else 0
+    
+    problem_times = [r["time_seconds"] for r in results]
+    correct_times = [r["time_seconds"] for r in results if r["is_correct"]]
+    incorrect_times = [r["time_seconds"] for r in results if not r["is_correct"]]
+    
+    time_analysis = {
+        "avg_time": sum(problem_times) / len(problem_times) if problem_times else 0,
+        "min_time": min(problem_times) if problem_times else 0,
+        "max_time": max(problem_times) if problem_times else 0,
+        "median_time": sorted(problem_times)[len(problem_times)//2] if problem_times else 0,
+        "total_time": total_time,
+        "avg_time_correct": sum(correct_times) / len(correct_times) if correct_times else 0,
+        "avg_time_incorrect": sum(incorrect_times) / len(incorrect_times) if incorrect_times else 0
+    }
+    
+    agent_stats = agent.get_stats()
+    agent_stats.update({
+        "total_problems": total,
+        "correct": correct,
+        "accuracy": final_accuracy,
+        "total_time_seconds": total_time,
+        "avg_time_per_problem": total_time / total if total > 0 else 0,
+        "stats_by_type": stats_by_type,
+        "stats_by_level": stats_by_level,
+        "accuracy_by_type": accuracy_by_type,
+        "accuracy_by_level": accuracy_by_level,
+        
+        "tool_usage": {
+            "counts": tool_usage_stats,
+            "percentages": tool_usage_percentages,
+            "accuracy_by_tool": accuracy_by_tool
+        },
+        
+        "compute_strategies": {
+            "counts": compute_strategy_stats,
+            "percentages": compute_strategy_percentages,
+            "param_distribution": compute_param_distribution,
+            "accuracy_by_strategy": accuracy_by_compute_strategy,
+            "total_compute_params": total_compute_params,
+            "avg_params_per_problem": avg_compute_params_per_problem
+        },
+        
+        "reasoning_analysis": {
+            "avg_length_chars": avg_reasoning_length,
+            "avg_word_count": avg_word_count,
+            "avg_length_correct": avg_correct_reasoning_length,
+            "avg_length_incorrect": avg_incorrect_reasoning_length,
+            "length_correlation_with_accuracy": avg_correct_reasoning_length / avg_incorrect_reasoning_length if avg_incorrect_reasoning_length > 0 else 0,
+            "detailed_stats": reasoning_length_stats
+        },
+        
+        "planning_analysis": {
+            "usage": plan_usage_stats,
+            "accuracy_with_plan": accuracy_with_plan,
+            "accuracy_without_plan": accuracy_without_plan,
+            "plan_effectiveness_gain": accuracy_with_plan - accuracy_without_plan
+        },
+        
+        "verification": {
+            "total_problems_with_verification": verification_stats["attempted"],
+            "verification_pass_rate": (verification_stats["passed"] / verification_stats["attempted"] * 100) if verification_stats["attempted"] > 0 else 0,
+            **verification_stats
+        },
+        
+        "time_analysis": {
+            **time_analysis,
+            "time_efficiency": {
+                "seconds_per_correct_answer": total_time / correct if correct > 0 else 0,
+                "time_overhead_for_incorrect": time_analysis["avg_time_incorrect"] - time_analysis["avg_time_correct"]
+            }
+        },
+        
+        "compute_efficiency": {
+            "accuracy_per_compute_param": final_accuracy / avg_compute_params_per_problem if avg_compute_params_per_problem > 0 else 0,
+            "correct_per_second": correct / total_time if total_time > 0 else 0,
+            "total_compute_params_used": total_compute_params,
+            "avg_compute_params_per_problem": avg_compute_params_per_problem
+        },
+        
+        "error_analysis": error_analysis,
+        
+        "configuration": agent_config
+    })
+    
+    final_results = {
+        "statistics": agent_stats,
+        "results": results
+    }
+    
+    final_path = output_dir / json_filename_template.format(**agent_config)
+    with open(final_path, "w") as f:
+        json.dump(final_results, f, indent=2)
+    
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"FINAL RESULTS")
+        print(f"{'='*60}")
+        print(f"Total problems: {total}")
+        print(f"Correct: {correct}")
+        print(f"Overall Accuracy: {final_accuracy:.2f}%")
+        print(f"Total time: {total_time:.2f}s")
+        print(f"Avg time per problem: {total_time / total:.2f}s")
+        
+        print(f"\n--- ACCURACY BY {problem_type_key.upper()} ---")
+        for ptype, acc in accuracy_by_type.items():
+            print(f"  {ptype}: {acc:.2f}% ({stats_by_type[ptype]['correct']}/{stats_by_type[ptype]['total']})")
+        
+        print(f"\n--- ACCURACY BY {difficulty_key.upper()} ---")
+        for level, acc in accuracy_by_level.items():
+            print(f"  {level}: {acc:.2f}% ({stats_by_level[level]['correct']}/{stats_by_level[level]['total']})")
+        
+        print(f"\n--- TOOL USAGE ---")
+        for tool, count in tool_usage_stats.items():
+            percentage = tool_usage_percentages[tool]
+            acc = accuracy_by_tool.get(tool, {}).get("accuracy", 0)
+            print(f"  {tool}: {count} times ({percentage:.1f}%), Accuracy: {acc:.2f}%")
+        
+        print(f"\n--- COMPUTE STRATEGIES ---")
+        for strategy, count in compute_strategy_stats.items():
+            percentage = compute_strategy_percentages[strategy]
+            acc = accuracy_by_compute_strategy.get(strategy, {}).get("accuracy", 0)
+            print(f"  {strategy}: {count} times ({percentage:.1f}%), Accuracy: {acc:.2f}%")
+        
+        print(f"\n--- PLANNING EFFECTIVENESS ---")
+        print(f"  With plan: {plan_usage_stats['with_plan']} problems, Accuracy: {accuracy_with_plan:.2f}%")
+        print(f"  Without plan: {plan_usage_stats['without_plan']} problems, Accuracy: {accuracy_without_plan:.2f}%")
+        print(f"  Plan effectiveness gain: {accuracy_with_plan - accuracy_without_plan:+.2f}%")
+        
+        print(f"\nResults saved to: {final_path}")
+        print(f"Live CSV results saved to: {csv_path}")
+    
+    return final_results
+
+def load_config(config_path: str) -> Dict:
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+    return config
+
+
+def create_universal_agent(config: Dict) -> UniversalAgent:
+    client = create_llm_client(DictConfig(config["client"]))
+    
+    agent = UniversalAgent(
+        client_factory=client,
+        use_planner=config["agent"]["use_planner"],
+        use_tool_selector=config["agent"]["use_tool_selector"],
+        use_compute_selector=config["agent"]["use_compute_selector"],
+        fixed_tool=config["agent"].get("fixed_tool"),
+        fixed_compute=config["agent"].get("fixed_compute"),
+        remember_cot=config["agent"]["remember_cot"],
+        max_text_history=config["agent"]["max_text_history"],
+    )
+    
+    return agent
+
+
+def get_prompts() -> Dict[str, str]:
+    return {
+        "planning_prompt_template": PLANNING_PROMPT_TEMPLATE,
+        "system_prompt": MATH_SYSTEM_PROMPT,
+        "tool_selector_prompt": TOOL_SELECTOR_PROMPT,
+        "tool_selector_system_prompt": TOOL_SELECTOR_SYSTEM_PROMPT,
+        "compute_selector_prompt": COMPUTE_SELECTOR_PROMPT,
+        "compute_selector_system_prompt": COMPUTE_SELECTOR_SYSTEM_PROMPT,
+        "self_reflection_instruction_prompt": SELF_REFLECTION_INSTRUCTION_PROMPT,
+        "cot_instruction_prompt": COT_INSTRUCTION_PROMPT,
+        "prm_scoring_prompt": PRM_SCORING_PROMPT,
+        "final_answer_system_prompt": FINAL_ANSWER_SYSTEM_PROMPT,
+        "final_answer_user_prompt": FINAL_ANSWER_USER_PROMPT,
+        "unstructured_final_answer_system_prompt": UNSTRUCTURED_FINAL_ANSWER_SYSTEM_PROMPT,
+        "unstructured_final_answer_user_prompt": UNSTRUCTURED_FINAL_ANSWER_USER_PROMPT,
+        "direct_solve_prompt": DIRECT_SOLVE_PROMPT,
+        "direct_solve_system_prompt": DIRECT_SOLVE_SYSTEM_PROMPT,
+    }
+
+
+def evaluate_dataset(
+    dataset_name: str,
+    config: Dict,
+    verbose: bool = True
+) -> Dict[str, Any]:
+    agent = create_universal_agent(config)
+    
+    prompts = get_prompts()
+    
+    if dataset_name.lower() == "math":
+        core = MATHCore(agent, prompts)
+        
+        dataset = core.load_dataset(
+            split=config["eval"]["split"],
+            problem_types=config["eval"].get("problem_types"),
+            difficulty_levels=config["eval"].get("difficulty_levels"),
+            max_problems=config["eval"].get("max_problems"),
+        )
+        
+        csv_template = (
+            "math_mode-{mode}_planner-{use_planner}_"
+            "toolsel-{use_tool_selector}_computesel-{use_compute_selector}_"
+            "results_live.csv"
+        )
+        json_template = (
+            "math_mode-{mode}_planner-{use_planner}_"
+            "toolsel-{use_tool_selector}_computesel-{use_compute_selector}_"
+            "results_final.json"
+        )
+        
+    elif dataset_name.lower() == "gsm8k":
+        core = GSM8KCore(agent, prompts)
+        
+        dataset = core.load_dataset(
+            split=config["eval"].get("split", "test"),
+            max_problems=config["eval"].get("max_problems"),
+        )
+        
+        csv_template = (
+            "gsm8k_mode-{mode}_planner-{use_planner}_"
+            "toolsel-{use_tool_selector}_computesel-{use_compute_selector}_"
+            "results_live.csv"
+        )
+        json_template = (
+            "gsm8k_mode-{mode}_planner-{use_planner}_"
+            "toolsel-{use_tool_selector}_computesel-{use_compute_selector}_"
+            "results_final.json"
+        )
+    
+    else:
+        raise ValueError(f"Unknown dataset: {dataset_name}. Use 'math' or 'gsm8k'")
+    
+    def agent_factory():
+        fresh_agent = create_universal_agent(config)
+        if dataset_name.lower() == "math":
+            return MATHCore(fresh_agent, prompts)
+        else:
+            return GSM8KCore(fresh_agent, prompts)
+    
+    results = evaluate_reasoning_agent(
+        agent_factory=agent_factory,
+        dataset=dataset,
+        output_dir=config["eval"]["output_dir"],
+        agent_config=config["agent"],
+        check_answer_fn=core.check_answer,
+        extract_prediction_fn=core.extract_prediction,
+        csv_filename_template=csv_template,
+        json_filename_template=json_template,
+        prompt_kwargs={},
+        problem_key="problem",
+        gold_answer_key="gold_answer_extracted",
+        problem_type_key="problem_type",
+        difficulty_key="level",
+        extra_problem_keys=["gold_answer_raw", "gold_answer_normalized", "solution"] if dataset_name.lower() == "math" else ["gold_answer_raw", "gold_answer_normalized"],
+        verbose=verbose,
+    )
+    
+    return results
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Universal Agent Evaluation")
+    parser.add_argument(
+        "--config", 
+        type=str, 
+        default="./config.yaml", 
+        help="Path to config file"
+    )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default="math",
+        choices=["math", "gsm8k"],
+        help="Dataset to evaluate on (math or gsm8k)"
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        default=True,
+        help="Print detailed progress"
+    )
+    
+    args = parser.parse_args()
+    
+    config = load_config(args.config)
+    
+    print(f"\n{'='*70}")
+    print(f"UNIVERSAL AGENT EVALUATION - {args.dataset.upper()} DATASET")
+    print(f"{'='*70}\n")
+    
+    results = evaluate_dataset(
+        dataset_name=args.dataset,
+        config=config,
+        verbose=args.verbose
+    )
+    
+    print(f"\n{'='*70}")
+    print(f"EVALUATION COMPLETE")
+    print(f"{'='*70}\n")
+    
+    return results
+
+
+if __name__ == "__main__":
+    main()

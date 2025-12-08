@@ -131,7 +131,7 @@ agent:
 eval:
   num_workers: 16
   output_dir: dynamic_results
-  max_problems: 120
+  max_problems: 5
   split: test
   problem_types: null
   difficulty_levels: null

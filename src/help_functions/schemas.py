@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 
 Tool = Literal[
-    "reactive_actor",
+    "self_reflection",
     "cot",
     "heuristic_script",
     "numeric_verifier",

@@ -1,39 +1,44 @@
 ## System Model
                          ┌─────────────────────────────┐
-                         │     Environment (Crafter)   │
-                         │  Observation → Agent → Act  │
+                         │     Environment (MATH-500)  │
+                         │  Problem → Agent → Solution │
                          └──────────┬──────────────────┘
                                     │
                                     ▼
                     ┌───────────────────────────────────┐
-                    │       CUSTOM AGENT (Main)         │
-                    │  • Update history (obs + action)  │
-                    │  • Get prompt from builder        │
+                    │   UNIVERSAL AGENT (Main)          │
+                    │  • Set problem context            │
+                    │  • Build prompt with history      │
                     │  • Determine planning mode        │
+                    │  • Coordinate tool execution      │
                     └───────────────┬───────────────────┘
                                     │
                     ┌───────────────▼───────────────────┐
-                    │     PLANNING DECISION              │
-                    │  Dynamic: Agent decides (dt∈{0,1}) │
-                    │  Fixed: Every K steps (dt=1/K)     │
+                    │     PLANNING DECISION             │
+                    │  Planner: Create strategic plan   │
+                    │  No Planner: Direct to tools      │
                     └───────────────┬───────────────────┘
                                     │
                         ┌───────────┴───────────┐
                         │                       │
                         ▼                       ▼
             ┌──────────────────┐    ┌──────────────────┐
-            │  dt = 0          │    │  dt = 1          │
-            │  No Planning     │    │  Planning!       │
-            │  → Direct Action │    │  → New Plan      │
+            │  No Planner      │    │  With Planner    │
+            │  → Direct Solve  │    │  → Plan + Tools  │
             └────────┬─────────┘    └────────┬─────────┘
                      │                       │
                      │                       ▼
                      │         ┌─────────────────────────┐
                      │         │    TOOL SELECTOR        │
                      │         │  Master LLM decides:    │
-                     │         │  • reactive_actor       │
+                     │         │  • self_reflection      │
                      │         │  • cot                  │
-                     │         │  • heuristic_script     │
+                     │         │  • numeric_verifier     │
+                     │         │  • verifier             │
+                     │         │  • summarizer           │
+                     │         │  • reframe              │
+                     │         │  • web_search           │
+                     │         │  (max 3 tools, ordered) │
                      │         └───────────┬─────────────┘
                      │                     │
                      │                     ▼
@@ -43,6 +48,7 @@
                      │         │  • best_of_n:N          │
                      │         │  • beam_search:K        │
                      │         │  • lookahead:depth      │
+                     │         │  (or fixed_compute)     │
                      │         └───────────┬─────────────┘
                      │                     │
                      │         ┌───────────┴───────────┐
@@ -57,16 +63,17 @@
                      │    ┌──────────────────────────────────┐
                      │    │       REASONER EXECUTION         │
                      │    │  ┌────────────────────────────┐  │
-                     │    │  │ ReactiveActorReasoner      │  │
-                     │    │  │  • Fast action selection   │  │
+                     │    │  │ SelfReflectionReasoner     │  │
+                     │    │  │  1. Initial attempt        │  │
+                     │    │  │  2. Critique reasoning     │  │
+                     │    │  │  3. Refined solution       │  │
+                     │    │  │  → Best for complex/proofs │  │
                      │    │  └────────────────────────────┘  │
                      │    │  ┌────────────────────────────┐  │
                      │    │  │ CoTReasoner                │  │
                      │    │  │  • Step-by-step thinking   │  │
-                     │    │  └────────────────────────────┘  │
-                     │    │  ┌────────────────────────────┐  │
-                     │    │  │ HeuristicScriptReasoner    │  │
-                     │    │  │  • Rule-based policy       │  │
+                     │    │  │  • Linear progression      │  │
+                     │    │  │  → Best for standard tasks │  │
                      │    │  └────────────────────────────┘  │
                      │    └──────────────┬───────────────────┘
                      │                   │
@@ -97,7 +104,8 @@
                      │                     ▼
                      │            ┌─────────────────┐
                      │            │   PRM MODEL     │
-                     │            │ • Score resp.   │
+                     │            │ • Score steps   │
+                     │            │ • Rank candid.  │
                      │            │ • Select best   │
                      │            └────────┬────────┘
                      │                     │
@@ -105,16 +113,45 @@
                                                      │
                                                      ▼
                                         ┌─────────────────────┐
-                                        │   FINAL ACTION      │
-                                        │  • Clean & format   │
-                                        │  • Update metrics   │
+                                        │  AUXILIARY TOOLS    │
+                                        │  (if selected)      │
+                                        │  ┌───────────────┐  │
+                                        │  │NumericVerifier│  │
+                                        │  │ PRM-based     │  │
+                                        │  └───────────────┘  │
+                                        │  ┌───────────────┐  │
+                                        │  │Verifier       │  │
+                                        │  │ Correctness   │  │
+                                        │  └───────────────┘  │
+                                        │  ┌───────────────┐  │
+                                        │  │Summarizer     │  │
+                                        │  │ Compress      │  │
+                                        │  └───────────────┘  │
+                                        │  ┌───────────────┐  │
+                                        │  │Reframe        │  │
+                                        │  │ Reformulate   │  │
+                                        │  └───────────────┘  │
+                                        │  ┌───────────────┐  │
+                                        │  │WebSearch      │  │
+                                        │  │ External info │  │
+                                        │  └───────────────┘  │
+                                        └─────────┬───────────┘
+                                                  │
+                                                  ▼
+                                        ┌─────────────────────┐
+                                        │  FINAL ANSWER       │
+                                        │  • Structured JSON  │
+                                        │  • Unstructured txt │
+                                        │  • Metadata tracked │
                                         │  • Return response  │
                                         └─────────┬───────────┘
                                                   │
                                                   ▼
                                         ┌───────────────────┐
-                                        │   Environment     │
-                                        │  Execute action   │
+                                        │   Evaluation      │
+                                        │  • Check correct  │
+                                        │  • Track metrics  │
+                                        │  • Log results    │
                                         └───────────────────┘
 
 
@@ -124,16 +161,16 @@
 mkdir -p logs
 
 # Run direct mode in detached mode
-nohup python math_eval.py --config configs/config_direct.yaml > logs/direct.log 2>&1 &
+nohup python main.py --config configs/config_direct.yaml > logs/direct.log 2>&1 &
 
 # Run fixed tool mode in detached mode
-nohup python math_eval.py --config configs/config_fixed_tool.yaml > logs/fixed_tool.log 2>&1 &
+nohup python main.py --config configs/config_fixed_tool.yaml > logs/fixed_tool.log 2>&1 &
 
 # Run fixed compute mode in detached mode
-nohup python math_eval.py --config configs/config_fixed_compute.yaml > logs/fixed_compute.log 2>&1 &
+nohup python main.py --config configs/config_fixed_compute.yaml > logs/fixed_compute.log 2>&1 &
 
 # Run dynamic mode in detached mode
-nohup python math_eval.py --config configs/config_dynamic.yaml > logs/dynamic.log 2>&1 &
+nohup python main.py --config configs/config_dynamic.yaml > logs/dynamic.log 2>&1 &
 ```
 ## License
 

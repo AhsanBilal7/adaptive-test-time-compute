@@ -2,15 +2,14 @@ import re
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Callable
 
 from src.help_functions.schemas import FinalAnswer, ToolsPayload, DecisionPayload
 from src.help_functions.tool_selector import ToolSelector
 from src.help_functions.compute_selector import ComputeSelector
 from src.help_functions.prm_model import PRMModel
-from src.help_functions.reactive_actor import ReactiveActorReasoner
+from src.help_functions.self_reflection import SelfReflectionReasoner
 from src.help_functions.cot_reasoner import CoTReasoner
-from src.help_functions.heuristic_script_reasoner import HeuristicScriptReasoner
 from src.help_functions.compute_strategies import get_compute_strategy
 from src.help_functions.tools import NumericVerifier, VerifierTool, SummarizerTool, ReframeTool, WebSearchTool
 
@@ -42,16 +41,15 @@ def _provided(x):
 
 
 @dataclass
-class MathResponse:
+class UniversalResponse:
     reasoning: Optional[str]
-    answer: str  # Structured answer (from JSON schema)
-    answer_unstructured: str  # Unstructured answer (raw string in competition format)
+    answer: str
+    answer_unstructured: str
     plan: Optional[str]
     metadata: Dict[str, Any]
 
 
-class MathPromptBuilder:
-    
+class UniversalPromptBuilder:
     def __init__(self, max_text_history=16, remember_cot=True):
         self.max_text_history = max_text_history
         self.remember_cot = remember_cot
@@ -71,9 +69,9 @@ class MathPromptBuilder:
             if len(self.history) > self.max_text_history:
                 self.history = self.history[-self.max_text_history:]
     
-    def get_prompt(self, plan, math_system_prompt):
+    def get_prompt(self, plan, system_prompt):
         messages = []
-        messages.append({"role": "system", "content": math_system_prompt})
+        messages.append({"role": "system", "content": system_prompt})
         
         problem_msg = f"Problem: {self.problem}"
         if plan:
@@ -85,8 +83,7 @@ class MathPromptBuilder:
         return messages
 
 
-class MathAgent:
-    
+class UniversalAgent:
     def __init__(
         self,
         client_factory,
@@ -98,14 +95,14 @@ class MathAgent:
         remember_cot=True,
         max_text_history=16,
     ):
-        self.client = client_factory()
-        self.prompt_builder = MathPromptBuilder(max_text_history, remember_cot)
+        self.client = client_factory() if callable(client_factory) else client_factory
+        self.prompt_builder = UniversalPromptBuilder(max_text_history, remember_cot)
         
         self.use_planner = use_planner
         self.fixed_tool = fixed_tool
         
         if fixed_tool is not None:
-            valid_tools = ["reactive_actor", "cot", "heuristic_script"]
+            valid_tools = ["self_reflection", "cot", "heuristic_script"]
             if fixed_tool not in valid_tools:
                 raise ValueError(f"fixed_tool must be one of {valid_tools}, got {fixed_tool}")
             self.use_tool_selector = False
@@ -152,7 +149,7 @@ class MathAgent:
         
         self.prm_model = PRMModel(self.client)
         
-        reactive_actor = ReactiveActorReasoner(self.client)
+        self_reflection_reasoner = SelfReflectionReasoner(self.client)
         cot_reasoner = CoTReasoner(self.client)
         
         self.numeric_verifier = NumericVerifier(self.prm_model)
@@ -162,78 +159,38 @@ class MathAgent:
         self.web_tool = WebSearchTool(self.client)
         
         self.reasoners = {
-            "reactive_actor": reactive_actor,
+            "self_reflection": self_reflection_reasoner,
             "cot": cot_reasoner,
         }
-    
+        
     def solve(
         self,
-        problem,
-        planning_prompt_template=None,
-        math_system_prompt=None,
-        tool_selector_prompt=None,
-        tool_selector_system_prompt=None,
-        compute_selector_prompt=None,
-        compute_selector_system_prompt=None,
-        reactive_instruction_prompt=None,
-        cot_instruction_prompt=None,
-        prm_scoring_prompt=None,
-        final_answer_system_prompt=None,
-        final_answer_user_prompt=None,
-        unstructured_final_answer_system_prompt=None,
-        unstructured_final_answer_user_prompt=None,
-        direct_solve_prompt=None,
-        direct_solve_system_prompt=None,
-    ):
+        problem: str,
+        prompts: Dict[str, str],
+    ) -> UniversalResponse:
         self.prompt_builder.set_problem(problem)
         
-        if self.use_planner and planning_prompt_template:
-            self.plan = self._make_plan(problem, planning_prompt_template)
+        if self.use_planner and prompts.get("planning_prompt_template"):
+            self.plan = self._make_plan(problem, prompts["planning_prompt_template"])
         else:
             self.plan = None
         
-        messages = self.prompt_builder.get_prompt(self.plan, math_system_prompt)
+        messages = self.prompt_builder.get_prompt(self.plan, prompts["system_prompt"])
         
         if not self.use_tool_selector and not self.fixed_tool:
             reasoning, answer_structured, answer_unstructured = self._execute_direct(
-                problem,
-                direct_solve_prompt,
-                direct_solve_system_prompt,
-                unstructured_final_answer_system_prompt,
-                unstructured_final_answer_user_prompt,
+                problem, prompts
             )
         else:
             if self.use_tool_selector:
                 reasoning, answer_structured, answer_unstructured = self._execute_with_tools(
-                    problem,
-                    messages,
-                    tool_selector_prompt,
-                    tool_selector_system_prompt,
-                    compute_selector_prompt,
-                    compute_selector_system_prompt,
-                    reactive_instruction_prompt,
-                    cot_instruction_prompt,
-                    prm_scoring_prompt,
-                    final_answer_system_prompt,
-                    final_answer_user_prompt,
-                    unstructured_final_answer_system_prompt,
-                    unstructured_final_answer_user_prompt,
+                    problem, messages, prompts
                 )
             else:
                 reasoning, answer_structured, answer_unstructured = self._execute_simple(
-                    problem,
-                    messages,
-                    compute_selector_prompt,
-                    compute_selector_system_prompt,
-                    reactive_instruction_prompt,
-                    cot_instruction_prompt,
-                    prm_scoring_prompt,
-                    final_answer_system_prompt,
-                    final_answer_user_prompt,
-                    unstructured_final_answer_system_prompt,
-                    unstructured_final_answer_user_prompt,
+                    problem, messages, prompts
                 )
-                
+        
         metadata = {
             "plan": self.plan,
             "use_planner": self.use_planner,
@@ -246,7 +203,7 @@ class MathAgent:
             "compute_metadata": self.compute_metadata_history,
         }
         
-        return MathResponse(
+        return UniversalResponse(
             reasoning=reasoning,
             answer=answer_structured,
             answer_unstructured=answer_unstructured,
@@ -262,18 +219,10 @@ class MathAgent:
         plan, _, _ = self._extract_plan(completion)
         return plan
     
-    def _execute_direct(
-        self,
-        problem,
-        direct_solve_prompt,
-        direct_solve_system_prompt,
-        unstructured_final_answer_system_prompt,
-        unstructured_final_answer_user_prompt,
-    ):
-        # Get structured answer
+    def _execute_direct(self, problem, prompts):
         direct_messages = [
-            {"role": "system", "content": direct_solve_system_prompt},
-            {"role": "user", "content": direct_solve_prompt.format(problem=problem)}
+            {"role": "system", "content": prompts["direct_solve_system_prompt"]},
+            {"role": "user", "content": prompts["direct_solve_prompt"].format(problem=problem)}
         ]
         
         structured_response = self.client.generate_with_structured(
@@ -283,12 +232,11 @@ class MathAgent:
         
         final_answer_structured = get_field_from_completion(structured_response.completion, "answer")
         
-        # Get unstructured answer
         unstructured_messages = [
-            {"role": "system", "content": unstructured_final_answer_system_prompt},
+            {"role": "system", "content": prompts["unstructured_final_answer_system_prompt"]},
             {
                 "role": "user",
-                "content": unstructured_final_answer_user_prompt.format(
+                "content": prompts["unstructured_final_answer_user_prompt"].format(
                     problem=problem,
                     plan="No plan was created.",
                     full_reasoning="Direct solution approach used."
@@ -311,41 +259,28 @@ class MathAgent:
         
         return "", final_answer_structured, final_answer_unstructured
 
-    def _execute_simple(
-        self,
-        problem,
-        messages,
-        compute_selector_prompt,
-        compute_selector_system_prompt,
-        reactive_instruction_prompt,
-        cot_instruction_prompt,
-        prm_scoring_prompt,
-        final_answer_system_prompt,
-        final_answer_user_prompt,
-        unstructured_final_answer_system_prompt,
-        unstructured_final_answer_user_prompt,
-    ):
+    def _execute_simple(self, problem, messages, prompts):
         tool_name = self.fixed_tool if self.fixed_tool else "cot"
         self.tools_used = [tool_name]
         
         reasoner = self.reasoners.get(tool_name)
         
-        if tool_name == "reactive_actor":
-            instruction_prompt = reactive_instruction_prompt
+        if tool_name == "self_reflection":
+            instruction_prompt = prompts["self_reflection_instruction_prompt"]
         elif tool_name == "cot":
-            instruction_prompt = cot_instruction_prompt
+            instruction_prompt = prompts["cot_instruction_prompt"]
         else:
-            instruction_prompt = cot_instruction_prompt
+            instruction_prompt = prompts["cot_instruction_prompt"]
         
         if self.use_compute_selector:
             compute_config = self.compute_selector.select_compute_strategy(
                 problem,
                 self.plan,
                 tool_name,
-                compute_selector_prompt,
+                prompts["compute_selector_prompt"],
                 messages,
                 DecisionPayload.model_json_schema(),
-                compute_selector_system_prompt
+                prompts["compute_selector_system_prompt"]
             )
         elif self.fixed_compute:
             compute_config = self.fixed_compute
@@ -370,7 +305,7 @@ class MathAgent:
                 self.plan,
                 compute_config,
                 instruction_prompt,
-                prm_scoring_prompt,
+                prompts["prm_scoring_prompt"],
             )
             metadata["tool"] = tool_name
             reasoning = metadata.get('chosen_reasoning', '')
@@ -379,94 +314,45 @@ class MathAgent:
         
         full_reasoning = f"\n--- {tool_name.upper()} OUTPUT ---\nAction: {action}\nReasoning: {reasoning}"
         
-        # Get structured answer
-        final_messages_structured = [
-            {"role": "system", "content": final_answer_system_prompt},
-            {
-                "role": "user",
-                "content": final_answer_user_prompt.format(
-                    problem=problem,
-                    plan=self.plan if self.plan else "No plan was created.",
-                    full_reasoning=full_reasoning
-                )
-            }
-        ]
-        
-        structured_response = self.client.generate_with_structured(
-            messages=final_messages_structured,
-            schema=FinalAnswer.model_json_schema()
+        answer_structured, answer_unstructured = self._extract_final_answers(
+            problem, full_reasoning, prompts
         )
         
-        final_answer_structured = get_field_from_completion(structured_response.completion, "answer")
-        
-        # Get unstructured answer
-        final_messages_unstructured = [
-            {"role": "system", "content": unstructured_final_answer_system_prompt},
-            {
-                "role": "user",
-                "content": unstructured_final_answer_user_prompt.format(
-                    problem=problem,
-                    plan=self.plan if self.plan else "No plan was created.",
-                    full_reasoning=full_reasoning
-                )
-            }
-        ]
-        
-        unstructured_response = self.client.generate(final_messages_unstructured)
-        final_answer_unstructured = unstructured_response.completion if hasattr(unstructured_response, "completion") else str(unstructured_response)
-        
-        return full_reasoning, final_answer_structured, final_answer_unstructured
+        return full_reasoning, answer_structured, answer_unstructured
     
-    def _execute_with_tools(
-        self,
-        problem,
-        messages,
-        tool_selector_prompt,
-        tool_selector_system_prompt,
-        compute_selector_prompt,
-        compute_selector_system_prompt,
-        reactive_instruction_prompt,
-        cot_instruction_prompt,
-        prm_scoring_prompt,
-        final_answer_system_prompt,
-        final_answer_user_prompt,
-        unstructured_final_answer_system_prompt,
-        unstructured_final_answer_user_prompt,
-    ):
+    def _execute_with_tools(self, problem, messages, prompts):
         tool_selection = self.tool_selector.select_tool(
             problem,
             self.plan,
-            tool_selector_prompt,
+            prompts["tool_selector_prompt"],
             messages,
             ToolsPayload.model_json_schema(),
-            tool_selector_system_prompt
+            prompts["tool_selector_system_prompt"]
         )
         
-        selected_tools = tool_selection.get("tools", ["reactive_actor"])
+        selected_tools = tool_selection.get("tools", ["self_reflection"])
         self.tools_used = selected_tools
-        # print("======================================")
-        # print("Selected tools:", selected_tools)
-        # print("======================================")
+        
         accumulated_reasoning = []
         
         for tool_name in selected_tools:
-            if tool_name in ["reactive_actor", "cot"]:
+            if tool_name in ["self_reflection", "cot"]:
                 reasoner = self.reasoners.get(tool_name)
                 
-                if tool_name == "reactive_actor":
-                    instruction_prompt = reactive_instruction_prompt
+                if tool_name == "self_reflection":
+                    instruction_prompt = prompts["self_reflection_instruction_prompt"]
                 elif tool_name == "cot":
-                    instruction_prompt = cot_instruction_prompt
+                    instruction_prompt = prompts["cot_instruction_prompt"]
                 
                 if self.use_compute_selector:
                     compute_config = self.compute_selector.select_compute_strategy(
                         problem,
                         self.plan,
                         tool_name,
-                        compute_selector_prompt,
+                        prompts["compute_selector_prompt"],
                         messages,
                         DecisionPayload.model_json_schema(),
-                        compute_selector_system_prompt
+                        prompts["compute_selector_system_prompt"]
                     )
                 elif self.fixed_compute:
                     compute_config = self.fixed_compute
@@ -496,7 +382,7 @@ class MathAgent:
                         self.plan,
                         compute_config,
                         instruction_prompt,
-                        prm_scoring_prompt,
+                        prompts["prm_scoring_prompt"],
                     )
                     
                     accumulated_reasoning.append(f"\n--- {tool_name.upper()} OUTPUT (with {compute_config['strategy']}) ---")
@@ -513,7 +399,7 @@ class MathAgent:
                     problem,
                     self.plan,
                     accumulated_reasoning[-1] if accumulated_reasoning else "",
-                    prm_scoring_prompt,
+                    prompts["prm_scoring_prompt"],
                 )
                 accumulated_reasoning.append(f"\n--- NUMERIC VERIFICATION ---")
                 accumulated_reasoning.append(f"Verification result: {result}")
@@ -526,7 +412,7 @@ class MathAgent:
                     problem,
                     self.plan,
                     accumulated_reasoning[-1] if accumulated_reasoning else "",
-                    prm_scoring_prompt,
+                    prompts["prm_scoring_prompt"],
                 )
                 accumulated_reasoning.append(f"\n--- GENERAL VERIFICATION ---")
                 accumulated_reasoning.append(f"Verification result: {result}")
@@ -555,12 +441,18 @@ class MathAgent:
         
         full_reasoning = "\n".join(accumulated_reasoning)
         
-        # Get structured answer
+        answer_structured, answer_unstructured = self._extract_final_answers(
+            problem, full_reasoning, prompts
+        )
+        
+        return full_reasoning, answer_structured, answer_unstructured
+    
+    def _extract_final_answers(self, problem, full_reasoning, prompts):
         final_messages_structured = [
-            {"role": "system", "content": final_answer_system_prompt},
+            {"role": "system", "content": prompts["final_answer_system_prompt"]},
             {
                 "role": "user",
-                "content": final_answer_user_prompt.format(
+                "content": prompts["final_answer_user_prompt"].format(
                     problem=problem,
                     plan=self.plan if self.plan else "No plan was created.",
                     full_reasoning=full_reasoning
@@ -575,12 +467,11 @@ class MathAgent:
 
         final_answer_structured = get_field_from_completion(structured_response.completion, "answer")
         
-        # Get unstructured answer
         final_messages_unstructured = [
-            {"role": "system", "content": unstructured_final_answer_system_prompt},
+            {"role": "system", "content": prompts["unstructured_final_answer_system_prompt"]},
             {
                 "role": "user",
-                "content": unstructured_final_answer_user_prompt.format(
+                "content": prompts["unstructured_final_answer_user_prompt"].format(
                     problem=problem,
                     plan=self.plan if self.plan else "No plan was created.",
                     full_reasoning=full_reasoning
@@ -591,7 +482,7 @@ class MathAgent:
         unstructured_response = self.client.generate(final_messages_unstructured)
         final_answer_unstructured = unstructured_response.completion if hasattr(unstructured_response, "completion") else str(unstructured_response)
         
-        return full_reasoning, final_answer_structured, final_answer_unstructured
+        return final_answer_structured, final_answer_unstructured
     
     def _extract_plan(self, text):
         plan_match = re.search(r"<plan>(.*?)</plan>", text, re.IGNORECASE | re.DOTALL)

@@ -2,7 +2,7 @@ import json
 
 
 _VALID_TOOLS = (
-    "reactive_actor",
+    "self_reflection",
     "cot",
     "heuristic_script",
     "numeric_verifier",
@@ -12,7 +12,7 @@ _VALID_TOOLS = (
     "web_search",
 )
 
-_DEFAULT = {"tools": ["reactive_actor"]}
+_DEFAULT = {"tools": ["cot"]}
 
 
 class ToolSelector:

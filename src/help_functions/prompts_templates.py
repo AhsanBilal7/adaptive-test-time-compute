@@ -1,12 +1,17 @@
 MATH_SYSTEM_PROMPT = """You are a math solver. Provide the answer to the user's specific question in the required format."""
 
 
-
 TOOL_SELECTOR_SYSTEM_PROMPT = """You are a tool selector for solving a specific math problem.
 Analyze the user's math question and select the appropriate tools needed to solve it.
+
+Tool characteristics:
+- self_reflection: Best for complex, error-prone problems; includes automatic critique and refinement
+- cot: Best for straightforward multi-step problems with clear solution paths
+
 Respond with a single JSON object ONLY, no prose, no markdown.
 Schema: {"tools": ["tool1", "tool2", ...]}
-Available tools: cot, reactive_actor, numeric_verifier, verifier, summarizer, reframe, web_search."""
+Available tools: self_reflection, cot, numeric_verifier, verifier, summarizer, reframe, web_search."""
+
 
 COMPUTE_SELECTOR_SYSTEM_PROMPT = """You are a compute strategy selector for a specific math problem.
 Based on the user's math question, select the optimal test-time compute strategy and parameter.
@@ -40,7 +45,7 @@ TOOL_SELECTOR_PROMPT = (
     "Plan: {plan}\n"
     "Given Problem: {obs}\n\n"
     "Available tools:\n"
-    "reactive_actor   - Fast, direct action selection\n"
+    "self_reflection  - Reflective reasoning: initial attempt → critique → refinement\n"
     "cot              - Step-by-step reasoning\n"
     "numeric_verifier - PRM-based numeric checks\n"
     "verifier         - General PRM correctness check\n"
@@ -51,25 +56,34 @@ TOOL_SELECTOR_PROMPT = (
     "1) FACT-GAP: If the problem requires external facts, formulas, constants, or domain knowledge -> include web_search first.\n"
     "2) AMBIGUITY/UNCLEAR SPEC: If the math problem is ambiguous, underspecified, or has unclear notation "
     "-> include reframe before reasoning.\n"
-    "3) MULTI-STEP/DERIVATION: If solving requires multi-step algebra, proofs, decomposition, or logical chains "
-    "-> include cot.\n"
-    "4) NUMERIC RISK: If the problem involves arithmetic, units, thresholds, probabilities, or quantitative calculations "
+    "3) COMPLEX REASONING/PROOF: If solving requires complex proofs, error-prone logic, multi-step derivations, "
+    "or strategic decision-making where mistakes are likely -> include self_reflection (provides built-in critique).\n"
+    "4) STRAIGHTFORWARD MULTI-STEP: If solving requires standard multi-step algebra or clear decomposition "
+    "without significant risk of conceptual errors -> include cot.\n"
+    "5) NUMERIC RISK: If the problem involves arithmetic, units, thresholds, probabilities, or quantitative calculations "
     "-> include numeric_verifier after the reasoning step.\n"
-    "5) GENERAL CORRECTNESS: If the solution must satisfy constraints or prior steps are error-prone "
+    "6) GENERAL CORRECTNESS: If the solution must satisfy constraints or prior steps are error-prone "
     "-> include verifier after generation.\n"
-    "6) LONG REASONING: If Plan+Given Problem or expected derivation > 600 tokens or multiple sub-problems "
+    "7) LONG REASONING: If Plan+Given Problem or expected derivation > 600 tokens or multiple sub-problems "
     "-> include summarizer last.\n"
-    "7) SIMPLE COMPUTATION: ONLY if none of rules 1-6 apply and the problem is direct calculation "
-    "-> choose [\"reactive_actor\"] alone.\n\n"
+    "8) SIMPLE COMPUTATION: ONLY if none of rules 1-7 apply and the problem is direct calculation "
+    "-> choose [\"cot\"] alone.\n\n"
+    "TOOL SELECTION PRIORITY:\n"
+    "- Use self_reflection for: proofs, complex strategy problems, olympiad-level questions, problems requiring "
+    "multiple conceptual insights, or when error correction is critical.\n"
+    "- Use cot for: standard arithmetic, algebraic manipulation, routine calculus, straightforward word problems.\n"
+    "- self_reflection and cot are mutually exclusive - choose ONE based on complexity.\n\n"
     "ORDERING RULES:\n"
     "- If reframe selected, it must be first.\n"
     "- If web_search selected, it comes right after reframe (or first if no reframe).\n"
+    "- Reasoning tool (self_reflection or cot) comes after any reframe/web_search.\n"
     "- numeric_verifier precedes verifier; both follow the reasoning step.\n"
     "- summarizer is always last.\n\n"
     "HARD CONSTRAINTS:\n"
     "- If numeric terms or calculations are present, numeric_verifier is mandatory.\n"
     "- If external constants/formulas are needed, web_search is mandatory.\n"
-    "- Max sequence length is 3 tools.\n\n"
+    "- Max sequence length is 3 tools.\n"
+    "- Never include both self_reflection and cot in the same sequence.\n\n"
     "Return JSON ONLY: {{\"tools\": [\"tool1\", \"tool2\", ...]}}\n"
 )
 
@@ -114,7 +128,7 @@ Return JSON ONLY."""
 
 COT_INSTRUCTION_PROMPT = """You are solving a math problem step by step with deliberate reasoning.
 
-Your task RIGHT NOW is to choose the next action from the list below, and briefly explain why.
+Your task is to choose the next action from the list below and explain your reasoning.
 
 Action set:
 - ParseProblem: Extract key variables, conditions and constraints from the problem statement.
@@ -137,21 +151,20 @@ Action set:
 
 Rules:
 - Output ONLY the following two XML blocks, in this exact order:
-  1. <reasoning>Brief explanation of why you chose the next action</reasoning>
+  1. <reasoning>Clear, concise explanation of why you chose the next action</reasoning>
   2. <action>ActionName: one-line description</action>
-- Do NOT solve the problem.
+- Do NOT solve the problem completely in this step.
 - Do NOT add any other text before, after, or between the tags.
+- Keep reasoning focused and efficient.
 
 Output format (exact):
 <reasoning>...</reasoning>
 <action>ActionName: one-line description</action>"""
 
 
-REACTIVE_INSTRUCTION_PROMPT = """You are solving a math problem directly and efficiently.
+SELF_REFLECTION_INSTRUCTION_PROMPT = """You are solving a math problem using self-reflective reasoning.
 
-Use mathematical intuition to identify the most direct solution approach and select the next action.
-
-Your task RIGHT NOW is to choose exactly the next action from the list below, and briefly explain why.
+This is your INITIAL ATTEMPT. Propose the next action, knowing that you will critique and refine it.
 
 Action set:
 - ParseProblem: Extract key variables, conditions and constraints from the problem statement.
@@ -172,18 +185,25 @@ Action set:
 - GeneraliseOrEdgeCaseCheck: Consider extreme or boundary cases to ensure full correctness.
 - FormatSolutionText: Prepare the full derivation or solution text for output or training.
 
-Rules:
-- Output ONLY the following two XML blocks, in this exact order:
-  1. <reasoning>Brief explanation of why you chose the next action</reasoning>
-  2. <action>ActionName: one-line description</action>
-- Do NOT solve the problem.
-- Do NOT add any other text before, after, or between the tags.
+Instructions:
+1. Analyze the current state of the problem thoroughly
+2. Consider multiple possible next actions
+3. Explain your reasoning in detail, including:
+   - Why this action is strategically important
+   - What specific insights or progress it will provide
+   - Potential challenges or edge cases to watch for
+4. Be thoughtful - your reasoning will be critiqued and refined
 
 Output format (exact):
-<reasoning>...</reasoning>
-<action>ActionName: one-line description</action>"""
+<reasoning>Thorough explanation of why this action is the best next step, including potential pitfalls and considerations</reasoning>
+<action>ActionName: detailed description of what this action will accomplish</action>
 
-
+Rules:
+- Do NOT solve the problem completely in this step.
+- Do NOT add any text outside the XML tags.
+- Provide substantial reasoning that can be meaningfully critiqued.
+- Consider alternative approaches and explain why you chose this one.
+- Be explicit about assumptions and potential error sources."""
 
 FINAL_ANSWER_SYSTEM_PROMPT = "You are a mathematical problem solver. Extract the final numerical answer from the reasoning below."
 
