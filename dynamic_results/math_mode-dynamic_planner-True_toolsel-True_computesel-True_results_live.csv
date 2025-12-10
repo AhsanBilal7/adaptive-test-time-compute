@@ -1,0 +1,6 @@
+problem_id,problem_type,level,gold_answer,predicted_answer,is_correct,cumulative_accuracy,time_seconds,reasoning_length,word_count,tools_used,compute_strategy
+0,Precalculus,2,"\left( 3, \frac{\pi}{2} \right)","$\boxed{(3,\frac{\pi}{2})}$",False,0.00,14.28,513,79,cot,best_of_n
+1,Intermediate Algebra,5,p - q,25,False,0.00,90.32,3355,375,"reframe,self_reflection,cot",direct
+2,Algebra,3,\frac{14}{3},$\boxed{-\frac{47}{6}}$,False,0.00,9.41,672,87,"cot,numeric_verifier,verifier",beam_search
+3,Number Theory,3,9,$\boxed{7}$,False,0.00,4.94,673,87,"cot,numeric_verifier,verifier",best_of_n
+4,Algebra,2,\text{Evelyn},$\boxed{Carla}$,False,0.00,5.98,704,90,"cot,numeric_verifier,verifier",best_of_n
