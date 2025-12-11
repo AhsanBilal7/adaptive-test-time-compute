@@ -1,6 +1,101 @@
-problem_id,problem_type,level,gold_answer,predicted_answer,is_correct,cumulative_accuracy,time_seconds,reasoning_length,word_count,tools_used,compute_strategy
-0,Precalculus,2,"\left( 3, \frac{\pi}{2} \right)","$\boxed{(3,\frac{\pi}{2})}$",False,0.00,14.28,513,79,cot,best_of_n
-1,Intermediate Algebra,5,p - q,25,False,0.00,90.32,3355,375,"reframe,self_reflection,cot",direct
-2,Algebra,3,\frac{14}{3},$\boxed{-\frac{47}{6}}$,False,0.00,9.41,672,87,"cot,numeric_verifier,verifier",beam_search
-3,Number Theory,3,9,$\boxed{7}$,False,0.00,4.94,673,87,"cot,numeric_verifier,verifier",best_of_n
-4,Algebra,2,\text{Evelyn},$\boxed{Carla}$,False,0.00,5.98,704,90,"cot,numeric_verifier,verifier",best_of_n
+problem_id,problem_type,level,gold_answer,iteration,predicted_answer,is_correct,cumulative_accuracy,time_seconds,reasoning_length,word_count,tools_used,compute_strategy
+0,Precalculus,2,"\left( 3, \frac{\pi}{2} \right)",1,"$\boxed{(3,\frac{\pi}{2})}$",False,0.00,8.00,580,75,"cot,verifier",best_of_n
+0,Precalculus,2,"\left( 3, \frac{\pi}{2} \right)",2,"$\boxed{(3,\frac{\pi}{2})}$",False,0.00,9.93,1431,241,"reframe,web_search,cot",direct
+0,Precalculus,2,"\left( 3, \frac{\pi}{2} \right)",3,"$\boxed{(3,\frac{\pi}{2})}$",False,0.00,8.01,458,64,"cot,numeric_verifier",best_of_n
+0,Precalculus,2,"\left( 3, \frac{\pi}{2} \right)",4,"$\boxed{(3,\frac{\pi}{2})}$",False,0.00,8.12,688,100,"cot,numeric_verifier",best_of_n
+0,Precalculus,2,"\left( 3, \frac{\pi}{2} \right)",5,"$\boxed{(3,\frac{\pi}{2})}$",False,0.00,11.22,1819,277,"reframe,cot,numeric_verifier",direct
+0,Precalculus,2,"\left( 3, \frac{\pi}{2} \right)",6,"$\boxed{(3,\frac{\pi}{2})}$",False,0.00,8.47,514,75,"cot,numeric_verifier",best_of_n
+0,Precalculus,2,"\left( 3, \frac{\pi}{2} \right)",7,"$\boxed{(3, \frac{\pi}{2})}$",False,0.00,8.21,613,87,"cot,numeric_verifier",best_of_n
+0,Precalculus,2,"\left( 3, \frac{\pi}{2} \right)",8,"$\boxed{(3,\frac{\pi}{2})}$",False,0.00,8.23,571,79,"cot,numeric_verifier",best_of_n
+0,Precalculus,2,"\left( 3, \frac{\pi}{2} \right)",9,"$\boxed{(\sqrt{9},\frac{\pi}{2})}$",False,0.00,8.58,765,93,"cot,numeric_verifier,verifier",best_of_n
+0,Precalculus,2,"\left( 3, \frac{\pi}{2} \right)",10,"$\boxed{(3, \frac{\pi}{2})}$",False,0.00,7.83,591,90,"cot,numeric_verifier",best_of_n
+0,Precalculus,2,"\left( 3, \frac{\pi}{2} \right)",11,"$\boxed{(3,\frac{\pi}{2})}$",False,0.00,7.45,627,88,cot,best_of_n
+0,Precalculus,2,"\left( 3, \frac{\pi}{2} \right)",12,"$\boxed{(\sqrt{9},\frac{\pi}{2})}$",False,0.00,7.17,521,79,cot,best_of_n
+0,Precalculus,2,"\left( 3, \frac{\pi}{2} \right)",13,"$\boxed{(3,\frac{\pi}{2})}$",False,0.00,7.69,407,60,cot,best_of_n
+0,Precalculus,2,"\left( 3, \frac{\pi}{2} \right)",14,"$(\sqrt{9},\frac{\pi}{2})$",False,0.00,8.37,601,75,"cot,verifier",best_of_n
+0,Precalculus,2,"\left( 3, \frac{\pi}{2} \right)",15,"$\boxed{(3, \frac{\pi}{2})}$",False,0.00,7.98,368,55,cot,best_of_n
+0,Precalculus,2,"\left( 3, \frac{\pi}{2} \right)",16,"(3,\frac{\pi}{2})",False,0.00,13.50,2528,395,"reframe,web_search,cot",direct
+0,Precalculus,2,"\left( 3, \frac{\pi}{2} \right)",17,"$\boxed{(3,\frac{\pi}{2})}$",False,0.00,17.52,694,87,"cot,verifier,numeric_verifier",beam_search
+0,Precalculus,2,"\left( 3, \frac{\pi}{2} \right)",18,"$\boxed{(3,\frac{\pi}{2})}$",False,0.00,7.18,689,98,"cot,numeric_verifier",best_of_n
+0,Precalculus,2,"\left( 3, \frac{\pi}{2} \right)",19,"$\boxed{(3,\frac{\pi}{2})}$",False,0.00,7.84,326,53,cot,best_of_n
+0,Precalculus,2,"\left( 3, \frac{\pi}{2} \right)",20,"$\boxed{(3, \frac{\pi}{2})}$",False,0.00,7.76,606,90,"cot,numeric_verifier",best_of_n
+1,Intermediate Algebra,5,p - q,1,1,False,0.00,19.05,3271,475,"cot,reframe,numeric_verifier",best_of_n
+1,Intermediate Algebra,5,p - q,2,1,False,0.00,17.75,2951,471,"reframe,cot",direct
+1,Intermediate Algebra,5,p - q,3,0,False,0.00,16.08,2870,430,"reframe,cot,summarizer",direct
+1,Intermediate Algebra,5,p - q,4,$\boxed{13p - 6q}$,False,0.00,7.92,625,80,"cot,numeric_verifier,verifier",best_of_n
+1,Intermediate Algebra,5,p - q,5,$\boxed{p^2 - p\frac{\pi^4}{90}+q\frac{\pi^3}{6}}$,False,0.00,7.97,820,118,"cot,numeric_verifier,verifier",best_of_n
+1,Intermediate Algebra,5,p - q,6,$\boxed{14p - 6q}$,False,0.00,70.91,713,103,"self_reflection,cot,numeric_verifier",best_of_n
+1,Intermediate Algebra,5,p - q,7,$\boxed{\frac{14}{15}p - \frac{1}{2}q}$,False,0.00,80.20,821,119,"self_reflection,cot,numeric_verifier",best_of_n
+1,Intermediate Algebra,5,p - q,8,5,False,0.00,19.41,3933,615,"reframe,cot,numeric_verifier",direct
+1,Intermediate Algebra,5,p - q,9,$\boxed{14 - 7p}$,False,0.00,75.39,2459,373,"cot,self_reflection",best_of_n
+1,Intermediate Algebra,5,p - q,10,1,False,0.00,23.98,5081,809,"reframe,cot,summarizer",direct
+1,Intermediate Algebra,5,p - q,11,$\boxed{p(p-1) - q}$,False,0.00,80.26,1875,307,"reframe,self_reflection,summarizer",direct
+1,Intermediate Algebra,5,p - q,12,1,False,0.00,18.43,3840,607,"reframe,cot,verifier",direct
+1,Intermediate Algebra,5,p - q,13,$\boxed{2(p-q)}$,False,0.00,80.97,2029,279,"reframe,self_reflection,cot",direct
+1,Intermediate Algebra,5,p - q,14,$\boxed{\frac{14}{5}p^2 - \frac{4}{3}pq + \frac{19}{12}q^2}$,False,0.00,85.50,755,107,"self_reflection,cot,verifier",best_of_n
+1,Intermediate Algebra,5,p - q,15,2,False,0.00,16.57,2927,487,"reframe,cot",direct
+1,Intermediate Algebra,5,p - q,16,$\boxed{13p - 6q}$,False,0.00,70.43,654,93,"cot,self_reflection,numeric_verifier",best_of_n
+1,Intermediate Algebra,5,p - q,17,$\boxed{\frac{\pi^4}{80}}$,False,0.00,13.13,2202,357,"reframe,cot,numeric_verifier",direct
+1,Intermediate Algebra,5,p - q,18,$p - \frac{1}{4} + \frac{7}{8}q$,False,0.00,12.01,2259,350,"reframe,web_search,cot",direct
+1,Intermediate Algebra,5,p - q,19,14,False,0.00,17.09,2776,437,"reframe,cot,numeric_verifier",direct
+1,Intermediate Algebra,5,p - q,20,$\boxed{13p - 6q}$,False,0.00,8.25,736,96,"cot,numeric_verifier,verifier",best_of_n
+2,Algebra,3,\frac{14}{3},1,$\boxed{\frac{31}{6}}$,False,0.00,10.15,437,63,"cot,numeric_verifier",best_of_n
+2,Algebra,3,\frac{14}{3},2,$\boxed{-\frac{25}{3}}$,False,0.00,7.67,643,80,"cot,numeric_verifier,verifier",best_of_n
+2,Algebra,3,\frac{14}{3},3,$\boxed{\frac{7}{2}}$,False,0.00,7.50,615,76,"cot,numeric_verifier,verifier",best_of_n
+2,Algebra,3,\frac{14}{3},4,71,False,0.00,12.54,529,69,"cot,numeric_verifier,verifier",best_of_n
+2,Algebra,3,\frac{14}{3},5,$\boxed{-\frac{11}{5}}$,False,0.00,7.82,547,81,"cot,numeric_verifier",best_of_n
+2,Algebra,3,\frac{14}{3},6,$\boxed{\frac{-1}{3}}$,False,0.00,8.47,577,79,"cot,numeric_verifier",best_of_n
+2,Algebra,3,\frac{14}{3},7,5,False,0.00,12.44,945,125,"cot,numeric_verifier,verifier",best_of_n
+2,Algebra,3,\frac{14}{3},8,$\boxed{\frac{4}{3}}$,False,0.00,15.39,766,105,"cot,numeric_verifier,verifier",beam_search
+2,Algebra,3,\frac{14}{3},9,$\boxed{\frac{2}{3}+\left(-\frac{7}{1}\right)+\left(\frac{6}{0}\right)=-\frac{29}{3}}$,False,0.00,7.99,563,75,"cot,numeric_verifier",best_of_n
+2,Algebra,3,\frac{14}{3},10,$\boxed{-\frac{29}{3}}$,False,0.00,7.57,653,81,"cot,numeric_verifier,verifier",best_of_n
+2,Algebra,3,\frac{14}{3},11,0,False,0.00,11.05,471,67,"cot,numeric_verifier",best_of_n
+2,Algebra,3,\frac{14}{3},12,$\boxed{\frac{2}{3} + \frac{5}{1} + 0 = \frac{13}{3}}$,False,0.00,18.63,597,82,"cot,numeric_verifier,verifier",beam_search
+2,Algebra,3,\frac{14}{3},13,0,False,0.00,12.34,503,70,"cot,numeric_verifier",best_of_n
+2,Algebra,3,\frac{14}{3},14,0,False,0.00,9.20,782,109,"cot,numeric_verifier,verifier",best_of_n
+2,Algebra,3,\frac{14}{3},15,$\boxed{\frac{-1}{3}}$,False,0.00,8.20,699,91,"cot,numeric_verifier,verifier",best_of_n
+2,Algebra,3,\frac{14}{3},16,13,False,0.00,13.16,691,90,"cot,numeric_verifier,verifier",best_of_n
+2,Algebra,3,\frac{14}{3},17,13,False,0.00,12.07,556,81,"cot,numeric_verifier",best_of_n
+2,Algebra,3,\frac{14}{3},18,0,False,0.00,11.09,666,102,"cot,numeric_verifier",best_of_n
+2,Algebra,3,\frac{14}{3},19,0,False,0.00,9.87,394,61,cot,best_of_n
+2,Algebra,3,\frac{14}{3},20,$\boxed{-\frac{47}{6}}$,False,0.00,9.46,530,79,"cot,numeric_verifier",best_of_n
+3,Number Theory,3,9,1,$\boxed{7}$,False,0.00,8.70,767,100,"cot,numeric_verifier,verifier",best_of_n
+3,Number Theory,3,9,2,$\boxed{7}$,False,0.00,8.07,757,98,"cot,numeric_verifier,verifier",best_of_n
+3,Number Theory,3,9,3,$\boxed{7}$,False,0.00,7.72,715,93,"cot,numeric_verifier,verifier",best_of_n
+3,Number Theory,3,9,4,$\boxed{7}$,False,0.00,7.76,616,86,"cot,numeric_verifier",best_of_n
+3,Number Theory,3,9,5,$\boxed{7}$,False,0.00,7.36,472,76,cot,best_of_n
+3,Number Theory,3,9,6,$\boxed{7}$,False,0.00,8.84,723,99,"cot,numeric_verifier,verifier",best_of_n
+3,Number Theory,3,9,7,$\boxed{7}$,False,0.00,7.03,442,59,"cot,numeric_verifier",best_of_n
+3,Number Theory,3,9,8,$\boxed{7}$,False,0.00,7.72,516,70,"cot,numeric_verifier",best_of_n
+3,Number Theory,3,9,9,$\boxed{7}$,False,0.00,7.42,776,100,"cot,numeric_verifier,verifier",best_of_n
+3,Number Theory,3,9,10,$\boxed{7}$,False,0.00,6.97,382,57,cot,best_of_n
+3,Number Theory,3,9,11,$\boxed{7}$,False,0.00,7.68,590,84,"cot,numeric_verifier",best_of_n
+3,Number Theory,3,9,12,$\boxed{7}$,False,0.00,6.98,623,80,"cot,numeric_verifier,verifier",best_of_n
+3,Number Theory,3,9,13,$\boxed{7}$,False,0.00,7.23,626,79,"cot,numeric_verifier,verifier",best_of_n
+3,Number Theory,3,9,14,$\boxed{7}$,False,0.00,7.13,692,90,"cot,numeric_verifier,verifier",best_of_n
+3,Number Theory,3,9,15,$\boxed{7}$,False,0.00,6.55,516,73,"cot,numeric_verifier",best_of_n
+3,Number Theory,3,9,16,$\boxed{7}$,False,0.00,7.20,549,76,"cot,numeric_verifier",best_of_n
+3,Number Theory,3,9,17,$\boxed{7}$,False,0.00,7.71,666,93,"cot,numeric_verifier,verifier",best_of_n
+3,Number Theory,3,9,18,$\boxed{7}$,False,0.00,7.79,559,76,"cot,numeric_verifier",best_of_n
+3,Number Theory,3,9,19,$\boxed{7}$,False,0.00,6.30,542,73,"cot,numeric_verifier",best_of_n
+3,Number Theory,3,9,20,$\boxed{7}$,False,0.00,6.84,634,93,"cot,numeric_verifier",best_of_n
+4,Algebra,2,\text{Evelyn},1,$\boxed{Carla}$,False,0.00,8.04,532,76,"cot,numeric_verifier",best_of_n
+4,Algebra,2,\text{Evelyn},2,3,False,0.00,12.41,2324,392,"reframe,cot,numeric_verifier",direct
+4,Algebra,2,\text{Evelyn},3,3,False,0.00,15.38,1795,273,"reframe,cot,numeric_verifier",direct
+4,Algebra,2,\text{Evelyn},4,$\boxed{Debra}$,False,0.00,9.00,892,117,"cot,numeric_verifier,verifier",best_of_n
+4,Algebra,2,\text{Evelyn},5,$\boxed{Carla}$,False,0.00,8.92,439,67,cot,best_of_n
+4,Algebra,2,\text{Evelyn},6,3,False,0.00,12.01,1774,322,"reframe,web_search,cot",direct
+4,Algebra,2,\text{Evelyn},7,$\boxed{Carla}$,False,0.00,8.94,566,84,"cot,numeric_verifier",best_of_n
+4,Algebra,2,\text{Evelyn},8,3,False,0.00,14.32,2387,383,"reframe,web_search,cot",direct
+4,Algebra,2,\text{Evelyn},9,3,False,0.00,12.43,1854,303,"reframe,cot",direct
+4,Algebra,2,\text{Evelyn},10,0,False,0.00,16.69,3140,521,"reframe,web_search,cot",direct
+4,Algebra,2,\text{Evelyn},11,Evelyn,True,0.00,13.15,2142,358,"reframe,web_search,cot",direct
+4,Algebra,2,\text{Evelyn},12,$\boxed{Briana}$,False,0.00,8.00,736,99,"cot,numeric_verifier,verifier",best_of_n
+4,Algebra,2,\text{Evelyn},13,$\boxed{Briana}$,False,0.00,3.19,582,83,"cot,numeric_verifier",best_of_n
+4,Algebra,2,\text{Evelyn},14,3,False,0.00,15.46,2040,362,"reframe,cot",direct
+4,Algebra,2,\text{Evelyn},15,5,False,0.00,14.25,3029,483,"reframe,web_search,cot",direct
+4,Algebra,2,\text{Evelyn},16,$\boxed{Briana}$,False,0.00,8.24,536,77,"cot,numeric_verifier",best_of_n
+4,Algebra,2,\text{Evelyn},17,$\boxed{Debra}$,False,0.00,13.19,688,85,"cot,numeric_verifier,verifier",best_of_n
+4,Algebra,2,\text{Evelyn},18,$\boxed{Debra}$,False,0.00,7.59,358,52,cot,best_of_n
+4,Algebra,2,\text{Evelyn},19,1,False,0.00,12.79,2765,461,"web_search,reframe,cot",direct
+4,Algebra,2,\text{Evelyn},20,3,False,0.00,16.06,2472,436,"reframe,web_search,cot",direct

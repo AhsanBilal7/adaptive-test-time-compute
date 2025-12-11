@@ -141,7 +141,7 @@ client:
   base_url: http://localhost:11434/v1
   model_id: llama3.1:8b-instruct
   generate_kwargs:
-    temperature: 0.8
+    temperature: 0.95
     max_tokens: 1024
   timeout: 60
   max_retries: 5

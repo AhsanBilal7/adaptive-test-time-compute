@@ -1,151 +1,520 @@
-#!/usr/bin/env python3
-import os, json, math, sys, argparse
-from collections import defaultdict, OrderedDict
-try:
-    import pandas as pd
-except ImportError:
-    pd = None
-
-# ---------------- Crafter normalized score ----------------
-def normalized_crafter_score(success_rates, num_achievements=22):
-    s = list(success_rates)
-    if len(s) < num_achievements:
-        s += [0.0] * (num_achievements - len(s))
-    return (math.exp(sum(math.log(1.0 + x) for x in s) / num_achievements) - 1.0) * 100.0
+import json
+import argparse
+from pathlib import Path
+from typing import Dict, List, Any
+import matplotlib.pyplot as plt
+import numpy as np
+from collections import Counter, defaultdict
+import seaborn as sns
 
 
-def is_episode_json(path):
-    name = os.path.basename(path)
-    return name.endswith(".json") and not name.endswith("_summary.json") and name not in ("summary.json","crafter_summary.json")
+def load_pathway_data(pathway_file: str) -> List[Dict[str, Any]]:
+    with open(pathway_file, 'r') as f:
+        data = json.load(f)
+    return data
 
 
-def collect_episode_achievements(run_task_dir):
-    episodes = 0
-    success_counts = defaultdict(int)
-    all_keys = set()
-    for root, _, files in os.walk(run_task_dir):
-        for f in files:
-            if not is_episode_json(f):
-                continue
-            p = os.path.join(root, f)
-            try:
-                with open(p) as fh:
-                    data = json.load(fh)
-            except Exception:
-                continue
-            ach = data.get("achievements") or {}
-            fired = {k for k, v in ach.items() if (isinstance(v, bool) and v) or (isinstance(v,(int,float)) and v>0)}
-            for k in fired:
-                success_counts[k] += 1
-                all_keys.add(k)
-            all_keys |= set(ach.keys())
-            episodes += 1
-    return episodes, success_counts, all_keys
+def plot_tool_selection_distribution(pathway_data: List[Dict], output_dir: Path):
+    all_tools = []
+    for problem in pathway_data:
+        for iteration in problem["iterations"]:
+            all_tools.extend(iteration["tools_selected"])
+    
+    tool_counts = Counter(all_tools)
+    
+    fig, ax = plt.subplots(figsize=(12, 6))
+    tools = list(tool_counts.keys())
+    counts = list(tool_counts.values())
+    
+    colors = plt.cm.Set3(np.linspace(0, 1, len(tools)))
+    ax.bar(tools, counts, color=colors)
+    ax.set_xlabel('Tool Name', fontsize=12)
+    ax.set_ylabel('Frequency', fontsize=12)
+    ax.set_title('Tool Selection Distribution Across All Iterations', fontsize=14, fontweight='bold')
+    ax.tick_params(axis='x', rotation=45)
+    plt.tight_layout()
+    plt.savefig(output_dir / 'tool_distribution.png', dpi=300)
+    plt.close()
 
 
-def read_summary_fields(summary_path):
-    try:
-        with open(summary_path) as f:
-            d = json.load(f)
-        prog = float(d.get("progression_percentage", 0.0))
-        se = float(d.get("standard_error", 0.0))
-        episodes = int(d.get("episodes_played", 0))
-    except Exception:
-        prog, se, episodes = 0.0, 0.0, 0
-    return prog, se, episodes
+def plot_compute_strategy_distribution(pathway_data: List[Dict], output_dir: Path):
+    all_strategies = []
+    for problem in pathway_data:
+        for iteration in problem["iterations"]:
+            for config in iteration["compute_configs"]:
+                all_strategies.append(config.get("strategy", "unknown"))
+    
+    strategy_counts = Counter(all_strategies)
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    strategies = list(strategy_counts.keys())
+    counts = list(strategy_counts.values())
+    
+    colors = plt.cm.Pastel1(np.linspace(0, 1, len(strategies)))
+    ax.bar(strategies, counts, color=colors)
+    ax.set_xlabel('Compute Strategy', fontsize=12)
+    ax.set_ylabel('Frequency', fontsize=12)
+    ax.set_title('Compute Strategy Distribution Across All Iterations', fontsize=14, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(output_dir / 'compute_strategy_distribution.png', dpi=300)
+    plt.close()
 
 
-def read_agent_config(run_dir):
-    """Return mode and planning_frequency from outer summary.json."""
-    outer_summary = os.path.join(run_dir, "summary.json")
-    if not os.path.exists(outer_summary):
-        return None, None
-    try:
-        with open(outer_summary) as f:
-            d = json.load(f)
-        agent = d.get("agent", {})
-        mode = agent.get("mode")
-        plan_freq = agent.get("planning_frequency")
-    except Exception:
-        mode, plan_freq = None, None
-    return mode, plan_freq
+def plot_compute_param_distribution(pathway_data: List[Dict], output_dir: Path):
+    strategy_params = defaultdict(list)
+    
+    for problem in pathway_data:
+        for iteration in problem["iterations"]:
+            for config in iteration["compute_configs"]:
+                strategy = config.get("strategy", "unknown")
+                param = config.get("param", 0)
+                strategy_params[strategy].append(param)
+    
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    positions = []
+    data_to_plot = []
+    labels = []
+    
+    for i, (strategy, params) in enumerate(strategy_params.items()):
+        positions.append(i)
+        data_to_plot.append(params)
+        labels.append(strategy)
+    
+    bp = ax.boxplot(data_to_plot, positions=positions, labels=labels, patch_artist=True)
+    
+    colors = plt.cm.Set2(np.linspace(0, 1, len(labels)))
+    for patch, color in zip(bp['boxes'], colors):
+        patch.set_facecolor(color)
+    
+    ax.set_xlabel('Compute Strategy', fontsize=12)
+    ax.set_ylabel('Parameter Value', fontsize=12)
+    ax.set_title('Compute Parameter Distribution by Strategy', fontsize=14, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(output_dir / 'compute_param_boxplot.png', dpi=300)
+    plt.close()
 
 
-def find_crafter_runs(results_root):
-    runs = []
-    for dirpath, _, files in os.walk(results_root):
-        if "crafter_summary.json" in files:
-            summary_path = os.path.join(dirpath, "crafter_summary.json")
-            rel = os.path.relpath(dirpath, results_root)
-            parts = rel.split(os.sep)
-            run_dir = os.path.join(results_root, parts[0])
-            env = parts[1] if len(parts)>=2 else ""
-            task = parts[2] if len(parts)>=3 else os.path.basename(dirpath)
-            runs.append({
-                "summary_path": summary_path,
-                "run_dir": run_dir,
-                "env": env,
-                "task": task,
-                "task_dir": dirpath
-            })
-    return runs
+def plot_iteration_time_trends(pathway_data: List[Dict], output_dir: Path):
+    num_iterations = len(pathway_data[0]["iterations"]) if pathway_data else 0
+    
+    iteration_times = defaultdict(list)
+    
+    for problem in pathway_data:
+        for iteration in problem["iterations"]:
+            iter_num = iteration["iteration"]
+            time_sec = iteration["time_seconds"]
+            iteration_times[iter_num].append(time_sec)
+    
+    iterations = sorted(iteration_times.keys())
+    avg_times = [np.mean(iteration_times[i]) for i in iterations]
+    std_times = [np.std(iteration_times[i]) for i in iterations]
+    
+    fig, ax = plt.subplots(figsize=(12, 6))
+    ax.plot(iterations, avg_times, marker='o', linewidth=2, markersize=6, color='#2E86AB')
+    ax.fill_between(iterations, 
+                     np.array(avg_times) - np.array(std_times),
+                     np.array(avg_times) + np.array(std_times),
+                     alpha=0.3, color='#A23B72')
+    ax.set_xlabel('Iteration Number', fontsize=12)
+    ax.set_ylabel('Time (seconds)', fontsize=12)
+    ax.set_title('Average Execution Time per Iteration', fontsize=14, fontweight='bold')
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(output_dir / 'iteration_time_trends.png', dpi=300)
+    plt.close()
 
 
-def assemble_table(results_root, out_csv):
-    runs = find_crafter_runs(results_root)
-    if not runs:
-        print(f"No crafter_summary.json files found under {results_root}")
+def plot_tool_sequence_heatmap(pathway_data: List[Dict], output_dir: Path):
+    tool_sequences = []
+    
+    for problem in pathway_data:
+        for iteration in problem["iterations"]:
+            tools = iteration["tools_selected"]
+            if tools:
+                tool_sequences.append(tuple(tools))
+    
+    sequence_counts = Counter(tool_sequences)
+    top_sequences = sequence_counts.most_common(15)
+    
+    if not top_sequences:
         return
-    global_ach = set()
-    per_run = {}
-    for r in runs:
-        episodes, counts, keys = collect_episode_achievements(r["task_dir"])
-        per_run[r["task_dir"]] = (episodes, counts, keys)
-        global_ach |= keys
-    ach_cols = sorted(global_ach)
+    
+    sequences = [' -> '.join(seq) for seq, _ in top_sequences]
+    counts = [count for _, count in top_sequences]
+    
+    fig, ax = plt.subplots(figsize=(14, 8))
+    y_pos = np.arange(len(sequences))
+    
+    colors = plt.cm.viridis(np.linspace(0.3, 0.9, len(sequences)))
+    ax.barh(y_pos, counts, color=colors)
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(sequences, fontsize=9)
+    ax.set_xlabel('Frequency', fontsize=12)
+    ax.set_title('Top 15 Tool Sequence Patterns', fontsize=14, fontweight='bold')
+    ax.invert_yaxis()
+    plt.tight_layout()
+    plt.savefig(output_dir / 'tool_sequence_patterns.png', dpi=300, bbox_inches='tight')
+    plt.close()
 
-    rows = []
-    for r in runs:
-        prog, se, ep_sum = read_summary_fields(r["summary_path"])
-        episodes, counts, keys = per_run[r["task_dir"]]
-        num_eps = episodes if episodes>0 else ep_sum
-        rates = {k:(counts.get(k,0)/num_eps if num_eps>0 else 0.0) for k in ach_cols}
-        score_pct = normalized_crafter_score(rates.values())
-        mode, plan_freq = read_agent_config(r["run_dir"])
-        row = OrderedDict()
-        row["run_folder"] = os.path.basename(r["run_dir"])
-        row["env"] = r["env"]
-        row["task"] = r["task"]
-        row["episodes"] = num_eps
-        row["mode"] = mode
-        row["planning_frequency"] = plan_freq
-        row["progression_percentage"] = prog
-        row["standard_error"] = se
-        row["normalized_score_pct"] = score_pct
-        for k in ach_cols:
-            row[f"ach_{k}_rate"] = rates[k]
-        rows.append(row)
 
-    if pd is not None:
-        pd.DataFrame(rows).to_csv(out_csv, index=False)
-    else:
-        import csv
-        with open(out_csv,"w",newline="") as f:
-            w=csv.DictWriter(f,fieldnames=list(rows[0].keys()))
-            w.writeheader()
-            w.writerows(rows)
-    print(f"✅ CSV written to {out_csv}")
-    for r in rows:
-        print(f"{r['run_folder']}: Prog={r['progression_percentage']:.2f}% ±{r['standard_error']:.2f}, NormScore={r['normalized_score_pct']:.2f}%, Mode={r['mode']}, PlanFreq={r['planning_frequency']}")
+def plot_problem_trajectory(pathway_data: List[Dict], problem_idx: int, output_dir: Path):
+    if problem_idx >= len(pathway_data):
+        return
+    
+    problem = pathway_data[problem_idx]
+    iterations = problem["iterations"]
+    
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10))
+    
+    iter_nums = [it["iteration"] for it in iterations]
+    
+    tools_by_iter = []
+    for it in iterations:
+        tools = it["tools_selected"]
+        tools_str = ', '.join(tools) if tools else 'none'
+        tools_by_iter.append(tools_str)
+    
+    unique_tool_combos = list(set(tools_by_iter))
+    tool_to_num = {tool: i for i, tool in enumerate(unique_tool_combos)}
+    tool_nums = [tool_to_num[t] for t in tools_by_iter]
+    
+    ax1.plot(iter_nums, tool_nums, marker='o', linewidth=2, markersize=8, color='#E63946')
+    ax1.set_yticks(range(len(unique_tool_combos)))
+    ax1.set_yticklabels(unique_tool_combos, fontsize=8)
+    ax1.set_xlabel('Iteration Number', fontsize=11)
+    ax1.set_ylabel('Tool Selection', fontsize=11)
+    ax1.set_title(f'Problem {problem_idx + 1}: Tool Selection Trajectory', fontsize=12, fontweight='bold')
+    ax1.grid(True, alpha=0.3, axis='x')
+    
+    compute_strats = []
+    compute_params = []
+    for it in iterations:
+        configs = it["compute_configs"]
+        if configs:
+            strat = configs[0].get("strategy", "none")
+            param = configs[0].get("param", 0)
+        else:
+            strat = "none"
+            param = 0
+        compute_strats.append(strat)
+        compute_params.append(param)
+    
+    unique_strats = list(set(compute_strats))
+    strat_to_num = {s: i for i, s in enumerate(unique_strats)}
+    strat_nums = [strat_to_num[s] for s in compute_strats]
+    
+    ax2_twin = ax2.twinx()
+    
+    line1 = ax2.plot(iter_nums, strat_nums, marker='s', linewidth=2, markersize=8, 
+                     color='#457B9D', label='Compute Strategy')
+    ax2.set_yticks(range(len(unique_strats)))
+    ax2.set_yticklabels(unique_strats, fontsize=8)
+    ax2.set_ylabel('Compute Strategy', fontsize=11, color='#457B9D')
+    ax2.tick_params(axis='y', labelcolor='#457B9D')
+    
+    line2 = ax2_twin.plot(iter_nums, compute_params, marker='^', linewidth=2, markersize=8,
+                          color='#F1A208', label='Compute Param')
+    ax2_twin.set_ylabel('Compute Parameter', fontsize=11, color='#F1A208')
+    ax2_twin.tick_params(axis='y', labelcolor='#F1A208')
+    
+    ax2.set_xlabel('Iteration Number', fontsize=11)
+    ax2.set_title(f'Problem {problem_idx + 1}: Compute Configuration Trajectory', fontsize=12, fontweight='bold')
+    ax2.grid(True, alpha=0.3, axis='x')
+    
+    lines = line1 + line2
+    labels = [l.get_label() for l in lines]
+    ax2.legend(lines, labels, loc='upper left', fontsize=9)
+    
+    plt.tight_layout()
+    plt.savefig(output_dir / f'problem_{problem_idx + 1}_trajectory.png', dpi=300)
+    plt.close()
+
+
+def plot_plan_usage_distribution(pathway_data: List[Dict], output_dir: Path):
+    with_plan = 0
+    without_plan = 0
+    
+    for problem in pathway_data:
+        for iteration in problem["iterations"]:
+            if iteration.get("plan"):
+                with_plan += 1
+            else:
+                without_plan += 1
+    
+    fig, ax = plt.subplots(figsize=(8, 6))
+    
+    labels = ['With Plan', 'Without Plan']
+    sizes = [with_plan, without_plan]
+    colors = ['#06FFA5', '#FF6B6B']
+    explode = (0.05, 0)
+    
+    ax.pie(sizes, explode=explode, labels=labels, colors=colors, autopct='%1.1f%%',
+           shadow=True, startangle=90, textprops={'fontsize': 12})
+    ax.set_title('Plan Usage Distribution', fontsize=14, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(output_dir / 'plan_usage_distribution.png', dpi=300)
+    plt.close()
+
+
+def plot_strategy_param_heatmap(pathway_data: List[Dict], output_dir: Path):
+    strategy_param_matrix = defaultdict(lambda: defaultdict(int))
+    
+    for problem in pathway_data:
+        for iteration in problem["iterations"]:
+            for config in iteration["compute_configs"]:
+                strategy = config.get("strategy", "unknown")
+                param = config.get("param", 0)
+                strategy_param_matrix[strategy][param] += 1
+    
+    strategies = sorted(strategy_param_matrix.keys())
+    all_params = set()
+    for params_dict in strategy_param_matrix.values():
+        all_params.update(params_dict.keys())
+    params = sorted(all_params)
+    
+    matrix = np.zeros((len(strategies), len(params)))
+    for i, strategy in enumerate(strategies):
+        for j, param in enumerate(params):
+            matrix[i, j] = strategy_param_matrix[strategy].get(param, 0)
+    
+    fig, ax = plt.subplots(figsize=(12, 8))
+    im = ax.imshow(matrix, cmap='YlOrRd', aspect='auto')
+    
+    ax.set_xticks(np.arange(len(params)))
+    ax.set_yticks(np.arange(len(strategies)))
+    ax.set_xticklabels(params)
+    ax.set_yticklabels(strategies)
+    
+    ax.set_xlabel('Parameter Value', fontsize=12)
+    ax.set_ylabel('Compute Strategy', fontsize=12)
+    ax.set_title('Strategy-Parameter Frequency Heatmap', fontsize=14, fontweight='bold')
+    
+    for i in range(len(strategies)):
+        for j in range(len(params)):
+            text = ax.text(j, i, int(matrix[i, j]),
+                          ha="center", va="center", color="black", fontsize=9)
+    
+    cbar = plt.colorbar(im, ax=ax)
+    cbar.set_label('Frequency', fontsize=11)
+    
+    plt.tight_layout()
+    plt.savefig(output_dir / 'strategy_param_heatmap.png', dpi=300)
+    plt.close()
+
+
+def plot_problem_type_tool_correlation(pathway_data: List[Dict], output_dir: Path):
+    problem_type_tools = defaultdict(lambda: defaultdict(int))
+    
+    for problem in pathway_data:
+        problem_type = problem.get("problem_type", "unknown")
+        for iteration in problem["iterations"]:
+            for tool in iteration["tools_selected"]:
+                problem_type_tools[problem_type][tool] += 1
+    
+    problem_types = sorted(problem_type_tools.keys())
+    all_tools = set()
+    for tools_dict in problem_type_tools.values():
+        all_tools.update(tools_dict.keys())
+    tools = sorted(all_tools)
+    
+    matrix = np.zeros((len(problem_types), len(tools)))
+    for i, ptype in enumerate(problem_types):
+        for j, tool in enumerate(tools):
+            matrix[i, j] = problem_type_tools[ptype].get(tool, 0)
+    
+    row_sums = matrix.sum(axis=1, keepdims=True)
+    row_sums[row_sums == 0] = 1
+    matrix_normalized = matrix / row_sums * 100
+    
+    fig, ax = plt.subplots(figsize=(14, 10))
+    im = ax.imshow(matrix_normalized, cmap='Blues', aspect='auto')
+    
+    ax.set_xticks(np.arange(len(tools)))
+    ax.set_yticks(np.arange(len(problem_types)))
+    ax.set_xticklabels(tools, rotation=45, ha='right')
+    ax.set_yticklabels(problem_types)
+    
+    ax.set_xlabel('Tool', fontsize=12)
+    ax.set_ylabel('Problem Type', fontsize=12)
+    ax.set_title('Tool Usage by Problem Type (Percentage)', fontsize=14, fontweight='bold')
+    
+    for i in range(len(problem_types)):
+        for j in range(len(tools)):
+            text = ax.text(j, i, f'{matrix_normalized[i, j]:.1f}%',
+                          ha="center", va="center", 
+                          color="white" if matrix_normalized[i, j] > 50 else "black",
+                          fontsize=8)
+    
+    cbar = plt.colorbar(im, ax=ax)
+    cbar.set_label('Percentage (%)', fontsize=11)
+    
+    plt.tight_layout()
+    plt.savefig(output_dir / 'problem_type_tool_correlation.png', dpi=300, bbox_inches='tight')
+    plt.close()
+
+
+def generate_trajectory_report(pathway_data: List[Dict], output_dir: Path):
+    num_problems = len(pathway_data)
+    num_iterations = len(pathway_data[0]["iterations"]) if pathway_data else 0
+    total_iterations = num_problems * num_iterations
+    
+    all_tools = []
+    all_strategies = []
+    all_params = []
+    all_times = []
+    plan_count = 0
+    
+    for problem in pathway_data:
+        for iteration in problem["iterations"]:
+            all_tools.extend(iteration["tools_selected"])
+            all_times.append(iteration["time_seconds"])
+            if iteration.get("plan"):
+                plan_count += 1
+            
+            for config in iteration["compute_configs"]:
+                all_strategies.append(config.get("strategy", "unknown"))
+                all_params.append(config.get("param", 0))
+    
+    tool_counts = Counter(all_tools)
+    strategy_counts = Counter(all_strategies)
+    
+    report = []
+    report.append("=" * 80)
+    report.append("TRAJECTORY ANALYSIS REPORT")
+    report.append("=" * 80)
+    report.append(f"\nDataset Statistics:")
+    report.append(f"  Total Problems: {num_problems}")
+    report.append(f"  Iterations per Problem: {num_iterations}")
+    report.append(f"  Total Iterations: {total_iterations}")
+    
+    report.append(f"\n{'-' * 80}")
+    report.append("Tool Usage Statistics:")
+    report.append(f"{'-' * 80}")
+    for tool, count in tool_counts.most_common():
+        percentage = (count / len(all_tools)) * 100 if all_tools else 0
+        report.append(f"  {tool:25s}: {count:6d} times ({percentage:5.2f}%)")
+    
+    report.append(f"\n{'-' * 80}")
+    report.append("Compute Strategy Statistics:")
+    report.append(f"{'-' * 80}")
+    for strategy, count in strategy_counts.most_common():
+        percentage = (count / len(all_strategies)) * 100 if all_strategies else 0
+        report.append(f"  {strategy:25s}: {count:6d} times ({percentage:5.2f}%)")
+    
+    report.append(f"\n{'-' * 80}")
+    report.append("Compute Parameter Statistics:")
+    report.append(f"{'-' * 80}")
+    if all_params:
+        report.append(f"  Mean Parameter Value: {np.mean(all_params):.2f}")
+        report.append(f"  Median Parameter Value: {np.median(all_params):.2f}")
+        report.append(f"  Min Parameter Value: {np.min(all_params):.2f}")
+        report.append(f"  Max Parameter Value: {np.max(all_params):.2f}")
+        report.append(f"  Std Dev Parameter Value: {np.std(all_params):.2f}")
+    
+    report.append(f"\n{'-' * 80}")
+    report.append("Timing Statistics:")
+    report.append(f"{'-' * 80}")
+    if all_times:
+        report.append(f"  Mean Iteration Time: {np.mean(all_times):.2f} seconds")
+        report.append(f"  Median Iteration Time: {np.median(all_times):.2f} seconds")
+        report.append(f"  Min Iteration Time: {np.min(all_times):.2f} seconds")
+        report.append(f"  Max Iteration Time: {np.max(all_times):.2f} seconds")
+        report.append(f"  Total Time: {np.sum(all_times):.2f} seconds")
+    
+    report.append(f"\n{'-' * 80}")
+    report.append("Planning Statistics:")
+    report.append(f"{'-' * 80}")
+    plan_percentage = (plan_count / total_iterations) * 100 if total_iterations else 0
+    report.append(f"  Iterations with Plan: {plan_count} ({plan_percentage:.2f}%)")
+    report.append(f"  Iterations without Plan: {total_iterations - plan_count} ({100 - plan_percentage:.2f}%)")
+    
+    report.append(f"\n{'=' * 80}\n")
+    
+    report_text = '\n'.join(report)
+    
+    with open(output_dir / 'trajectory_report.txt', 'w') as f:
+        f.write(report_text)
+    
+    print(report_text)
+
+
+def visualize_trajectories(pathway_file: str, output_dir: str, num_sample_problems: int = 5):
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    
+    print(f"Loading pathway data from: {pathway_file}")
+    pathway_data = load_pathway_data(pathway_file)
+    
+    print(f"\nGenerating visualizations...")
+    
+    print("  - Tool selection distribution...")
+    plot_tool_selection_distribution(pathway_data, output_path)
+    
+    print("  - Compute strategy distribution...")
+    plot_compute_strategy_distribution(pathway_data, output_path)
+    
+    print("  - Compute parameter distribution...")
+    plot_compute_param_distribution(pathway_data, output_path)
+    
+    print("  - Iteration time trends...")
+    plot_iteration_time_trends(pathway_data, output_path)
+    
+    print("  - Tool sequence patterns...")
+    plot_tool_sequence_heatmap(pathway_data, output_path)
+    
+    print("  - Plan usage distribution...")
+    plot_plan_usage_distribution(pathway_data, output_path)
+    
+    print("  - Strategy-parameter heatmap...")
+    plot_strategy_param_heatmap(pathway_data, output_path)
+    
+    print("  - Problem type-tool correlation...")
+    plot_problem_type_tool_correlation(pathway_data, output_path)
+    
+    print(f"\n  - Individual problem trajectories (sampling {num_sample_problems} problems)...")
+    num_problems = len(pathway_data)
+    sample_indices = np.linspace(0, num_problems - 1, min(num_sample_problems, num_problems), dtype=int)
+    
+    for idx in sample_indices:
+        plot_problem_trajectory(pathway_data, idx, output_path)
+    
+    print("\nGenerating trajectory report...")
+    generate_trajectory_report(pathway_data, output_path)
+    
+    print(f"\n{'=' * 80}")
+    print(f"All visualizations saved to: {output_path}")
+    print(f"{'=' * 80}\n")
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Summarize BALROG Crafter runs into a CSV with progression, stderr, normalized score, and per-achievement rates.")
-    ap.add_argument("--results_root", type=str, required=False, default="./BALROG/results/" ,help="Path to BALROG results/ directory")
-    ap.add_argument("--out_csv", type=str, default="crafter_runs_summary.csv", help="Output CSV path (default: ./crafter_runs_summary.csv)")
-    args = ap.parse_args()
-
-    sys.exit(assemble_table(args.results_root, args.out_csv))
+    parser = argparse.ArgumentParser(description="Visualize Agent Trajectory Pathways")
+    parser.add_argument(
+        "--pathway_file",
+        type=str,
+        default="./dynamic_results/math_mode-dynamic_planner-True_toolsel-True_computesel-True_pathway.json",
+        help="Path to the pathway JSON file"
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default="./visualizations",
+        help="Directory to save visualization plots"
+    )
+    parser.add_argument(
+        "--num_samples",
+        type=int,
+        default=5,
+        help="Number of sample problems to visualize individual trajectories"
+    )
+    
+    args = parser.parse_args()
+    
+    visualize_trajectories(
+        pathway_file=args.pathway_file,
+        output_dir=args.output_dir,
+        num_sample_problems=args.num_samples
+    )
 
 
 if __name__ == "__main__":

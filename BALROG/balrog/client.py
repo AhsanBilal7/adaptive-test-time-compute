@@ -496,7 +496,8 @@ class OllamaWrapper(LLMClientWrapper):
             keep_alive="30m"  # Keep model loaded for 30 minutes
         )
         
-            # stream=False,
+
+        # stream=False,
         # keep_alive=self.client_kwargs.get("keep_alive", "5m")
         return LLMResponse(
             model_id=self.model_id,

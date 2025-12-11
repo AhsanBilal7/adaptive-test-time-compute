@@ -1,0 +1,52 @@
+================================================================================
+TRAJECTORY ANALYSIS REPORT
+================================================================================
+
+Dataset Statistics:
+  Total Problems: 5
+  Iterations per Problem: 20
+  Total Iterations: 100
+
+--------------------------------------------------------------------------------
+Tool Usage Statistics:
+--------------------------------------------------------------------------------
+  cot                      :     99 times (40.74%)
+  numeric_verifier         :     67 times (27.57%)
+  verifier                 :     31 times (12.76%)
+  reframe                  :     26 times (10.70%)
+  web_search               :     10 times ( 4.12%)
+  self_reflection          :      7 times ( 2.88%)
+  summarizer               :      3 times ( 1.23%)
+
+--------------------------------------------------------------------------------
+Compute Strategy Statistics:
+--------------------------------------------------------------------------------
+  direct                   :    137 times (56.38%)
+  best_of_n                :    103 times (42.39%)
+  beam_search              :      3 times ( 1.23%)
+
+--------------------------------------------------------------------------------
+Compute Parameter Statistics:
+--------------------------------------------------------------------------------
+  Mean Parameter Value: 2.69
+  Median Parameter Value: 1.00
+  Min Parameter Value: 1.00
+  Max Parameter Value: 6.00
+  Std Dev Parameter Value: 1.97
+
+--------------------------------------------------------------------------------
+Timing Statistics:
+--------------------------------------------------------------------------------
+  Mean Iteration Time: 15.12 seconds
+  Median Iteration Time: 8.77 seconds
+  Min Iteration Time: 3.19 seconds
+  Max Iteration Time: 85.50 seconds
+  Total Time: 1512.02 seconds
+
+--------------------------------------------------------------------------------
+Planning Statistics:
+--------------------------------------------------------------------------------
+  Iterations with Plan: 98 (98.00%)
+  Iterations without Plan: 2 (2.00%)
+
+================================================================================

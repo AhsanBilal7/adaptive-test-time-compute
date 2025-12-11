@@ -25,7 +25,9 @@ def evaluate_reasoning_agent(
     extract_prediction_fn: Callable[[Any, Dict], str],
     csv_filename_template: str,
     json_filename_template: str,
+    pathway_filename_template: str,
     prompt_kwargs: Dict[str, Any],
+    num_iterations: int = 20,
     problem_key: str = "problem",
     gold_answer_key: str = "gold_answer_extracted",
     problem_type_key: str = "problem_type",
@@ -53,10 +55,12 @@ def evaluate_reasoning_agent(
     compute_param_distribution = {}
     error_analysis = {"extraction_failures": 0, "timeout_errors": 0}
     
+    pathway_results = []
+    
     csv_path = output_dir / csv_filename_template.format(**agent_config)
     csv_headers = [
         "problem_id", problem_type_key, difficulty_key,
-        "gold_answer", "predicted_answer",
+        "gold_answer", "iteration", "predicted_answer",
         "is_correct", "cumulative_accuracy", "time_seconds",
         "reasoning_length", "word_count", "tools_used", "compute_strategy"
     ]
@@ -67,7 +71,7 @@ def evaluate_reasoning_agent(
     
     if verbose:
         print(f"[INFO] CSV results will be saved to: {csv_path}")
-        print(f"[INFO] Evaluating {len(dataset)} problems...")
+        print(f"[INFO] Evaluating {len(dataset)} problems with {num_iterations} iterations each...")
     
     start_time = time.time()
     
@@ -84,15 +88,72 @@ def evaluate_reasoning_agent(
             print(f"{problem_type_key}: {problem_type}, {difficulty_key}: {level}")
             print(f"Problem: {problem[:150]}...")
         
-        agent.reset()
+        iteration_results = []
+        pathway_info = {
+            "problem_id": problem_id,
+            "problem": problem,
+            problem_type_key: problem_type,
+            difficulty_key: level,
+            "gold_answer": gold_answer,
+            "iterations": []
+        }
         
-        problem_start = time.time()
-        response = agent.solve(problem, **prompt_kwargs)
-        problem_time = time.time() - problem_start
+        for iteration in range(num_iterations):
+            agent.reset()
+            
+            iteration_start = time.time()
+            response = agent.solve(problem, **prompt_kwargs)
+            iteration_time = time.time() - iteration_start
+            
+            predicted_answer = extract_prediction_fn(response, problem_data)
+            
+            is_correct = check_answer_fn(predicted_answer, gold_answer)
+            
+            reasoning_length = len(response.reasoning) if response.reasoning else 0
+            word_count = len(response.reasoning.split()) if response.reasoning else 0
+            
+            tools_used_list = response.metadata.get("tools_used", [])
+            compute_configs_list = response.metadata.get("compute_configs_used", [])
+            
+            primary_compute_strategy = "none"
+            if compute_configs_list:
+                primary_compute_strategy = compute_configs_list[0].get("strategy", "none")
+            
+            iteration_pathway = {
+                "iteration": iteration + 1,
+                "tools_selected": tools_used_list,
+                "compute_configs": compute_configs_list,
+                "plan": response.plan,
+                "time_seconds": iteration_time
+            }
+            pathway_info["iterations"].append(iteration_pathway)
+            
+            iteration_result = {
+                "iteration": iteration + 1,
+                "predicted_answer": predicted_answer,
+                "reasoning": response.reasoning,
+                "reasoning_length": reasoning_length,
+                "word_count": word_count,
+                "plan": response.plan,
+                "is_correct": is_correct,
+                "time_seconds": iteration_time,
+                "tools_used": tools_used_list,
+                "compute_configs_used": compute_configs_list,
+                "metadata": response.metadata
+            }
+            iteration_results.append(iteration_result)
+            
+            if verbose and iteration == 0:
+                print(f"\n--- ITERATION {iteration + 1} ---")
+                print(f"Reasoning: {response.reasoning[:200]}..." if len(response.reasoning) > 200 else f"Reasoning: {response.reasoning}")
+                print(f"Predicted: {predicted_answer}")
+                print(f"Correct: {'✅' if is_correct else '❌'}")
         
-        predicted_answer = extract_prediction_fn(response, problem_data)
+        pathway_results.append(pathway_info)
         
-        is_correct = check_answer_fn(predicted_answer, gold_answer)
+        final_iteration = iteration_results[-1]
+        is_correct = final_iteration["is_correct"]
+        predicted_answer = final_iteration["predicted_answer"]
         
         if is_correct:
             correct += 1
@@ -110,56 +171,49 @@ def evaluate_reasoning_agent(
         if is_correct:
             stats_by_level[level]["correct"] += 1
         
-        for tool in response.metadata.get("tools_used", []):
-            tool_usage_stats[tool] = tool_usage_stats.get(tool, 0) + 1
-        
-        for config in response.metadata.get("compute_configs_used", []):
-            strategy = config.get("strategy", "unknown")
-            param = config.get("param", 0)
+        for iter_result in iteration_results:
+            for tool in iter_result.get("tools_used", []):
+                tool_usage_stats[tool] = tool_usage_stats.get(tool, 0) + 1
             
-            compute_strategy_stats[strategy] = compute_strategy_stats.get(strategy, 0) + 1
+            for config in iter_result.get("compute_configs_used", []):
+                strategy = config.get("strategy", "unknown")
+                param = config.get("param", 0)
+                
+                compute_strategy_stats[strategy] = compute_strategy_stats.get(strategy, 0) + 1
+                
+                key = f"{strategy}_param_{param}"
+                compute_param_distribution[key] = compute_param_distribution.get(key, 0) + 1
             
-            key = f"{strategy}_param_{param}"
-            compute_param_distribution[key] = compute_param_distribution.get(key, 0) + 1
-        
-        reasoning_length = len(response.reasoning) if response.reasoning else 0
-        word_count = len(response.reasoning.split()) if response.reasoning else 0
-        reasoning_length_stats.append({
-            "problem_id": problem_id,
-            "length": reasoning_length,
-            "word_count": word_count,
-            "is_correct": is_correct
-        })
-        
-        if response.plan:
-            plan_usage_stats["with_plan"] += 1
-        else:
-            plan_usage_stats["without_plan"] += 1
-        
-        compute_metadata = response.metadata.get("compute_metadata", [])
-        for meta in compute_metadata:
-            if meta.get("tool") in ["numeric_verifier", "verifier"]:
-                verification_stats["attempted"] += 1
-                result = meta.get("result", {})
-                if isinstance(result, dict) and result.get("is_valid"):
-                    verification_stats["passed"] += 1
-                else:
-                    verification_stats["failed"] += 1
+            reasoning_length_stats.append({
+                "problem_id": problem_id,
+                "iteration": iter_result["iteration"],
+                "length": iter_result["reasoning_length"],
+                "word_count": iter_result["word_count"],
+                "is_correct": iter_result["is_correct"]
+            })
+            
+            if iter_result["plan"]:
+                plan_usage_stats["with_plan"] += 1
+            else:
+                plan_usage_stats["without_plan"] += 1
+            
+            compute_metadata = iter_result["metadata"].get("compute_metadata", [])
+            for meta in compute_metadata:
+                if meta.get("tool") in ["numeric_verifier", "verifier"]:
+                    verification_stats["attempted"] += 1
+                    result = meta.get("result", {})
+                    if isinstance(result, dict) and result.get("is_valid"):
+                        verification_stats["passed"] += 1
+                    else:
+                        verification_stats["failed"] += 1
         
         accuracy = correct / total * 100
         
         if verbose:
-            print(f"\n--- RESPONSE DETAILS ---")
-            print(f"Reasoning: {response.reasoning[:200]}..." if len(response.reasoning) > 200 else f"Reasoning: {response.reasoning}")
-            print(f"Plan: {response.plan}")
-            print(f"\n--- ANSWERS ---")
-            print(f"Predicted: {predicted_answer}")
+            print(f"\n--- FINAL RESULT (Iteration {num_iterations}) ---")
             print(f"Gold: {gold_answer}")
-            print(f"\n--- EVALUATION ---")
             print(f"Correct: {'✅' if is_correct else '❌'}")
             print(f"Overall Accuracy: {accuracy:.2f}% ({correct}/{total})")
-            print(f"Time: {problem_time:.2f}s")
-            print(f"Reasoning Length: {reasoning_length} chars, {word_count} words")
         
         result = {
             "problem_id": problem_id,
@@ -167,16 +221,10 @@ def evaluate_reasoning_agent(
             problem_type_key: problem_type,
             difficulty_key: level,
             "gold_answer": gold_answer,
-            "predicted_answer": predicted_answer,
-            "reasoning": response.reasoning,
-            "reasoning_length": reasoning_length,
-            "word_count": word_count,
-            "plan": response.plan,
-            "is_correct": is_correct,
-            "time_seconds": problem_time,
-            "tools_used": response.metadata.get("tools_used", []),
-            "compute_configs_used": response.metadata.get("compute_configs_used", []),
-            "metadata": response.metadata
+            "iterations": iteration_results,
+            "final_predicted_answer": predicted_answer,
+            "final_is_correct": is_correct,
+            "total_time_seconds": sum(ir["time_seconds"] for ir in iteration_results)
         }
         
         if extra_problem_keys:
@@ -186,28 +234,30 @@ def evaluate_reasoning_agent(
         
         results.append(result)
         
-        primary_compute_strategy = "none"
-        if response.metadata.get("compute_configs_used"):
-            primary_compute_strategy = response.metadata["compute_configs_used"][0].get("strategy", "none")
-        
-        csv_row = {
-            "problem_id": problem_id,
-            problem_type_key: problem_type,
-            difficulty_key: level,
-            "gold_answer": gold_answer,
-            "predicted_answer": predicted_answer,
-            "is_correct": is_correct,
-            "cumulative_accuracy": f"{accuracy:.2f}",
-            "time_seconds": f"{problem_time:.2f}",
-            "reasoning_length": reasoning_length,
-            "word_count": word_count,
-            "tools_used": ",".join(response.metadata.get("tools_used", [])),
-            "compute_strategy": primary_compute_strategy
-        }
-        
-        with open(csv_path, "a", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=csv_headers)
-            writer.writerow(csv_row)
+        for iter_result in iteration_results:
+            primary_compute_strategy = "none"
+            if iter_result.get("compute_configs_used"):
+                primary_compute_strategy = iter_result["compute_configs_used"][0].get("strategy", "none")
+            
+            csv_row = {
+                "problem_id": problem_id,
+                problem_type_key: problem_type,
+                difficulty_key: level,
+                "gold_answer": gold_answer,
+                "iteration": iter_result["iteration"],
+                "predicted_answer": iter_result["predicted_answer"],
+                "is_correct": iter_result["is_correct"],
+                "cumulative_accuracy": f"{accuracy:.2f}",
+                "time_seconds": f"{iter_result['time_seconds']:.2f}",
+                "reasoning_length": iter_result["reasoning_length"],
+                "word_count": iter_result["word_count"],
+                "tools_used": ",".join(iter_result.get("tools_used", [])),
+                "compute_strategy": primary_compute_strategy
+            }
+            
+            with open(csv_path, "a", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=csv_headers)
+                writer.writerow(csv_row)
     
     total_time = time.time() - start_time
     
@@ -231,12 +281,13 @@ def evaluate_reasoning_agent(
     
     accuracy_by_tool = {}
     for result in results:
-        for tool in result.get("tools_used", []):
-            if tool not in accuracy_by_tool:
-                accuracy_by_tool[tool] = {"correct": 0, "total": 0}
-            accuracy_by_tool[tool]["total"] += 1
-            if result["is_correct"]:
-                accuracy_by_tool[tool]["correct"] += 1
+        for iter_result in result["iterations"]:
+            for tool in iter_result.get("tools_used", []):
+                if tool not in accuracy_by_tool:
+                    accuracy_by_tool[tool] = {"correct": 0, "total": 0}
+                accuracy_by_tool[tool]["total"] += 1
+                if iter_result["is_correct"]:
+                    accuracy_by_tool[tool]["correct"] += 1
     
     for tool in accuracy_by_tool:
         stats = accuracy_by_tool[tool]
@@ -250,13 +301,14 @@ def evaluate_reasoning_agent(
     
     accuracy_by_compute_strategy = {}
     for result in results:
-        for config in result.get("compute_configs_used", []):
-            strategy = config.get("strategy", "unknown")
-            if strategy not in accuracy_by_compute_strategy:
-                accuracy_by_compute_strategy[strategy] = {"correct": 0, "total": 0}
-            accuracy_by_compute_strategy[strategy]["total"] += 1
-            if result["is_correct"]:
-                accuracy_by_compute_strategy[strategy]["correct"] += 1
+        for iter_result in result["iterations"]:
+            for config in iter_result.get("compute_configs_used", []):
+                strategy = config.get("strategy", "unknown")
+                if strategy not in accuracy_by_compute_strategy:
+                    accuracy_by_compute_strategy[strategy] = {"correct": 0, "total": 0}
+                accuracy_by_compute_strategy[strategy]["total"] += 1
+                if iter_result["is_correct"]:
+                    accuracy_by_compute_strategy[strategy]["correct"] += 1
     
     for strategy in accuracy_by_compute_strategy:
         stats = accuracy_by_compute_strategy[strategy]
@@ -274,16 +326,18 @@ def evaluate_reasoning_agent(
     total_compute_params = sum(
         config.get("param", 0)
         for result in results
-        for config in result.get("compute_configs_used", [])
+        for iter_result in result["iterations"]
+        for config in iter_result.get("compute_configs_used", [])
     )
-    avg_compute_params_per_problem = total_compute_params / total if total > 0 else 0
+    total_iterations = total * num_iterations
+    avg_compute_params_per_problem = total_compute_params / total_iterations if total_iterations > 0 else 0
     
-    accuracy_with_plan = sum(1 for r in results if r["is_correct"] and r["plan"]) / plan_usage_stats["with_plan"] * 100 if plan_usage_stats["with_plan"] > 0 else 0
-    accuracy_without_plan = sum(1 for r in results if r["is_correct"] and not r["plan"]) / plan_usage_stats["without_plan"] * 100 if plan_usage_stats["without_plan"] > 0 else 0
+    accuracy_with_plan = sum(1 for r in results for ir in r["iterations"] if ir["is_correct"] and ir["plan"]) / plan_usage_stats["with_plan"] * 100 if plan_usage_stats["with_plan"] > 0 else 0
+    accuracy_without_plan = sum(1 for r in results for ir in r["iterations"] if ir["is_correct"] and not ir["plan"]) / plan_usage_stats["without_plan"] * 100 if plan_usage_stats["without_plan"] > 0 else 0
     
-    problem_times = [r["time_seconds"] for r in results]
-    correct_times = [r["time_seconds"] for r in results if r["is_correct"]]
-    incorrect_times = [r["time_seconds"] for r in results if not r["is_correct"]]
+    problem_times = [ir["time_seconds"] for r in results for ir in r["iterations"]]
+    correct_times = [ir["time_seconds"] for r in results for ir in r["iterations"] if ir["is_correct"]]
+    incorrect_times = [ir["time_seconds"] for r in results for ir in r["iterations"] if not ir["is_correct"]]
     
     time_analysis = {
         "avg_time": sum(problem_times) / len(problem_times) if problem_times else 0,
@@ -297,6 +351,7 @@ def evaluate_reasoning_agent(
     
     agent_stats = agent.get_stats()
     agent_stats.update({
+        "num_iterations": num_iterations,
         "total_problems": total,
         "correct": correct,
         "accuracy": final_accuracy,
@@ -373,6 +428,10 @@ def evaluate_reasoning_agent(
     with open(final_path, "w") as f:
         json.dump(final_results, f, indent=2)
     
+    pathway_path = output_dir / pathway_filename_template.format(**agent_config)
+    with open(pathway_path, "w") as f:
+        json.dump(pathway_results, f, indent=2)
+    
     if verbose:
         print(f"\n{'='*60}")
         print(f"FINAL RESULTS")
@@ -404,11 +463,12 @@ def evaluate_reasoning_agent(
             print(f"  {strategy}: {count} times ({percentage:.1f}%), Accuracy: {acc:.2f}%")
         
         print(f"\n--- PLANNING EFFECTIVENESS ---")
-        print(f"  With plan: {plan_usage_stats['with_plan']} problems, Accuracy: {accuracy_with_plan:.2f}%")
-        print(f"  Without plan: {plan_usage_stats['without_plan']} problems, Accuracy: {accuracy_without_plan:.2f}%")
+        print(f"  With plan: {plan_usage_stats['with_plan']} iterations, Accuracy: {accuracy_with_plan:.2f}%")
+        print(f"  Without plan: {plan_usage_stats['without_plan']} iterations, Accuracy: {accuracy_without_plan:.2f}%")
         print(f"  Plan effectiveness gain: {accuracy_with_plan - accuracy_without_plan:+.2f}%")
         
         print(f"\nResults saved to: {final_path}")
+        print(f"Pathway results saved to: {pathway_path}")
         print(f"Live CSV results saved to: {csv_path}")
     
     return final_results
@@ -465,6 +525,8 @@ def evaluate_dataset(
     
     prompts = get_prompts()
     
+    num_iterations = config["eval"].get("num_iterations", 20)
+    
     if dataset_name.lower() == "math":
         core = MATHCore(agent, prompts)
         
@@ -485,6 +547,11 @@ def evaluate_dataset(
             "toolsel-{use_tool_selector}_computesel-{use_compute_selector}_"
             "results_final.json"
         )
+        pathway_template = (
+            "math_mode-{mode}_planner-{use_planner}_"
+            "toolsel-{use_tool_selector}_computesel-{use_compute_selector}_"
+            "pathway.json"
+        )
         
     elif dataset_name.lower() == "gsm8k":
         core = GSM8KCore(agent, prompts)
@@ -503,6 +570,11 @@ def evaluate_dataset(
             "gsm8k_mode-{mode}_planner-{use_planner}_"
             "toolsel-{use_tool_selector}_computesel-{use_compute_selector}_"
             "results_final.json"
+        )
+        pathway_template = (
+            "gsm8k_mode-{mode}_planner-{use_planner}_"
+            "toolsel-{use_tool_selector}_computesel-{use_compute_selector}_"
+            "pathway.json"
         )
     
     else:
@@ -524,7 +596,9 @@ def evaluate_dataset(
         extract_prediction_fn=core.extract_prediction,
         csv_filename_template=csv_template,
         json_filename_template=json_template,
+        pathway_filename_template=pathway_template,
         prompt_kwargs={},
+        num_iterations=num_iterations,
         problem_key="problem",
         gold_answer_key="gold_answer_extracted",
         problem_type_key="problem_type",
