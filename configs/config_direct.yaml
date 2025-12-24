@@ -14,6 +14,12 @@ agent:
 eval:
   num_workers: 16
   output_dir: direct_results
+
+    
+  use_prm_selection: true  
+  prm_selection_metric: "mean_reward"  
+
+
   max_problems: 120
   split: train
   problem_types: null

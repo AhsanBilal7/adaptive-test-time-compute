@@ -20,7 +20,11 @@
 # eval:
 #   num_workers: 16
 #   output_dir: direct_results_test
-#   max_problems: 120
+
+#   use_prm_selection: true  
+#   prm_selection_metric: "mean_reward"  
+
+#   max_problems: 5
 #   split: test
 #   problem_types: null
 #   difficulty_levels: null
@@ -30,7 +34,7 @@
 #   base_url: http://localhost:11434/v1
 #   model_id: llama3.1:8b-instruct
 #   generate_kwargs:
-#     temperature: 0.8
+#     temperature: 0.95
 #     max_tokens: 1024
 #   timeout: 60
 #   max_retries: 5
@@ -67,7 +71,7 @@
 #   base_url: http://localhost:11434/v1
 #   model_id: llama3.1:8b-instruct
 #   generate_kwargs:
-#     temperature: 0.8
+#     temperature: 0.95
 #     max_tokens: 1024
 #   timeout: 60
 #   max_retries: 5
@@ -105,7 +109,7 @@
 #   base_url: http://localhost:11434/v1
 #   model_id: llama3.1:8b-instruct
 #   generate_kwargs:
-#     temperature: 0.8
+#     temperature: 0.95
 #     max_tokens: 1024
 #   timeout: 60
 #   max_retries: 5
@@ -130,8 +134,12 @@ agent:
 
 eval:
   num_workers: 16
-  output_dir: dynamic_results
-  max_problems: 5
+  output_dir: dynamic_results_testing_with_prm
+  max_problems: null
+
+  use_prm_selection: true  
+  prm_selection_metric: "mean_reward"  
+
   split: test
   problem_types: null
   difficulty_levels: null

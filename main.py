@@ -9,11 +9,13 @@ from src.help_functions.prompts_templates import *
 from src.universal_agent import UniversalAgent
 from src.math_core import MATHCore
 from src.gsm8k_core import GSM8KCore
+from src.help_functions.prm_selector import PRMSelector
 import time
 import json
 import csv
 from pathlib import Path
 from typing import Optional, Dict, List, Any, Callable
+import numpy as np
 
 
 def evaluate_reasoning_agent(
@@ -33,12 +35,44 @@ def evaluate_reasoning_agent(
     problem_type_key: str = "problem_type",
     difficulty_key: str = "level",
     extra_problem_keys: Optional[List[str]] = None,
+    use_prm_selection: bool = True,
+    prm_selection_metric: str = "mean_reward",
     verbose: bool = True,
 ):
+    """
+    Evaluate a reasoning agent on a dataset with PRM-based iteration selection.
+    
+    Args:
+        agent_factory: Factory function to create fresh agent instances
+        dataset: List of problem dictionaries
+        output_dir: Directory to save results
+        agent_config: Agent configuration dictionary
+        check_answer_fn: Function to check if prediction matches gold answer
+        extract_prediction_fn: Function to extract prediction from response
+        csv_filename_template: Template for CSV filename
+        json_filename_template: Template for JSON filename
+        pathway_filename_template: Template for pathway filename
+        prompt_kwargs: Keyword arguments for agent.solve()
+        num_iterations: Number of iterations to run per problem
+        problem_key: Key for problem text in dataset
+        gold_answer_key: Key for gold answer in dataset
+        problem_type_key: Key for problem type in dataset
+        difficulty_key: Key for difficulty level in dataset
+        extra_problem_keys: Additional keys to include in results
+        use_prm_selection: Whether to use PRM for selecting best iteration
+        prm_selection_metric: Metric to use for PRM selection ('mean_reward', 'min_reward', 'final_reward')
+        verbose: Whether to print detailed progress
+    """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
     agent = agent_factory()
+    
+    # Initialize PRM selector if enabled
+    prm_selector = None
+    if use_prm_selection:
+        print(f"[INFO] Initializing PRM selector with metric: {prm_selection_metric}")
+        prm_selector = PRMSelector()
     
     results = []
     correct = 0
@@ -55,6 +89,14 @@ def evaluate_reasoning_agent(
     compute_param_distribution = {}
     error_analysis = {"extraction_failures": 0, "timeout_errors": 0}
     
+    # PRM-specific statistics
+    prm_stats = {
+        "iterations_selected": [],  # Which iteration was selected for each problem
+        "selection_improvements": 0,  # How many times PRM selected a different iteration than last
+        "avg_reward_improvement": 0.0,
+        "reward_scores": []  # All reward scores
+    }
+    
     pathway_results = []
     
     csv_path = output_dir / csv_filename_template.format(**agent_config)
@@ -62,7 +104,8 @@ def evaluate_reasoning_agent(
         "problem_id", problem_type_key, difficulty_key,
         "gold_answer", "iteration", "predicted_answer",
         "is_correct", "cumulative_accuracy", "time_seconds",
-        "reasoning_length", "word_count", "tools_used", "compute_strategy"
+        "reasoning_length", "word_count", "tools_used", "compute_strategy",
+        "selected_by_prm", "prm_mean_reward", "prm_min_reward", "prm_final_reward"
     ]
     
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
@@ -72,6 +115,8 @@ def evaluate_reasoning_agent(
     if verbose:
         print(f"[INFO] CSV results will be saved to: {csv_path}")
         print(f"[INFO] Evaluating {len(dataset)} problems with {num_iterations} iterations each...")
+        if use_prm_selection:
+            print(f"[INFO] Using PRM-based selection with metric: {prm_selection_metric}")
     
     start_time = time.time()
     
@@ -98,6 +143,7 @@ def evaluate_reasoning_agent(
             "iterations": []
         }
         
+        # Run all iterations
         for iteration in range(num_iterations):
             agent.reset()
             
@@ -132,6 +178,7 @@ def evaluate_reasoning_agent(
                 "iteration": iteration + 1,
                 "predicted_answer": predicted_answer,
                 "reasoning": response.reasoning,
+                "reasoning_steps": response.reasoning_steps,  # Store individual steps
                 "reasoning_length": reasoning_length,
                 "word_count": word_count,
                 "plan": response.plan,
@@ -149,11 +196,52 @@ def evaluate_reasoning_agent(
                 print(f"Predicted: {predicted_answer}")
                 print(f"Correct: {'✅' if is_correct else '❌'}")
         
+        # Select best iteration using PRM or use last iteration
+        if use_prm_selection and prm_selector:
+            best_iteration_idx, best_iteration, all_prm_scores = prm_selector.select_best_iteration(
+                problem=problem,
+                iteration_results=iteration_results,
+                selection_metric=prm_selection_metric,
+                system_prompt="Please reason step by step, and put your final answer within \\boxed{}."
+            )
+            
+            # Store PRM scores in pathway info
+            pathway_info["prm_scores"] = all_prm_scores
+            pathway_info["selected_iteration_idx"] = best_iteration_idx + 1
+            pathway_info["selection_metric"] = prm_selection_metric
+            
+            # Update statistics
+            prm_stats["iterations_selected"].append(best_iteration_idx + 1)
+            prm_stats["reward_scores"].extend(all_prm_scores)
+            
+            if best_iteration_idx != num_iterations - 1:
+                prm_stats["selection_improvements"] += 1
+            
+            # Mark selected iteration in iteration_results
+            for idx, iter_result in enumerate(iteration_results):
+                iter_result["selected_by_prm"] = (idx == best_iteration_idx)
+                iter_result["prm_scores"] = all_prm_scores[idx] if idx < len(all_prm_scores) else {}
+            
+            selected_iteration = best_iteration
+            
+            if verbose:
+                print(f"\n[PRM SELECTION] Selected iteration {best_iteration_idx + 1}/{num_iterations}")
+                print(f"  {prm_selection_metric}: {all_prm_scores[best_iteration_idx].get(prm_selection_metric, 0):.4f}")
+        else:
+            # Use last iteration (original behavior)
+            selected_iteration = iteration_results[-1]
+            best_iteration_idx = num_iterations - 1
+            
+            # Mark last iteration as selected
+            for idx, iter_result in enumerate(iteration_results):
+                iter_result["selected_by_prm"] = (idx == best_iteration_idx)
+                iter_result["prm_scores"] = {}
+        
         pathway_results.append(pathway_info)
         
-        final_iteration = iteration_results[-1]
-        is_correct = final_iteration["is_correct"]
-        predicted_answer = final_iteration["predicted_answer"]
+        # Use selected iteration for accuracy calculation
+        is_correct = selected_iteration["is_correct"]
+        predicted_answer = selected_iteration["predicted_answer"]
         
         if is_correct:
             correct += 1
@@ -171,6 +259,7 @@ def evaluate_reasoning_agent(
         if is_correct:
             stats_by_level[level]["correct"] += 1
         
+        # Collect statistics from all iterations
         for iter_result in iteration_results:
             for tool in iter_result.get("tools_used", []):
                 tool_usage_stats[tool] = tool_usage_stats.get(tool, 0) + 1
@@ -210,8 +299,9 @@ def evaluate_reasoning_agent(
         accuracy = correct / total * 100
         
         if verbose:
-            print(f"\n--- FINAL RESULT (Iteration {num_iterations}) ---")
+            print(f"\n--- FINAL RESULT (Selected Iteration {best_iteration_idx + 1}) ---")
             print(f"Gold: {gold_answer}")
+            print(f"Predicted: {predicted_answer}")
             print(f"Correct: {'✅' if is_correct else '❌'}")
             print(f"Overall Accuracy: {accuracy:.2f}% ({correct}/{total})")
         
@@ -222,6 +312,7 @@ def evaluate_reasoning_agent(
             difficulty_key: level,
             "gold_answer": gold_answer,
             "iterations": iteration_results,
+            "selected_iteration_idx": best_iteration_idx + 1,
             "final_predicted_answer": predicted_answer,
             "final_is_correct": is_correct,
             "total_time_seconds": sum(ir["time_seconds"] for ir in iteration_results)
@@ -234,10 +325,13 @@ def evaluate_reasoning_agent(
         
         results.append(result)
         
+        # Write all iterations to CSV
         for iter_result in iteration_results:
             primary_compute_strategy = "none"
             if iter_result.get("compute_configs_used"):
                 primary_compute_strategy = iter_result["compute_configs_used"][0].get("strategy", "none")
+            
+            prm_scores = iter_result.get("prm_scores", {})
             
             csv_row = {
                 "problem_id": problem_id,
@@ -252,7 +346,11 @@ def evaluate_reasoning_agent(
                 "reasoning_length": iter_result["reasoning_length"],
                 "word_count": iter_result["word_count"],
                 "tools_used": ",".join(iter_result.get("tools_used", [])),
-                "compute_strategy": primary_compute_strategy
+                "compute_strategy": primary_compute_strategy,
+                "selected_by_prm": iter_result.get("selected_by_prm", False),
+                "prm_mean_reward": f"{prm_scores.get('mean_reward', 0):.4f}" if prm_scores else "",
+                "prm_min_reward": f"{prm_scores.get('min_reward', 0):.4f}" if prm_scores else "",
+                "prm_final_reward": f"{prm_scores.get('final_reward', 0):.4f}" if prm_scores else ""
             }
             
             with open(csv_path, "a", newline="", encoding="utf-8") as f:
@@ -349,6 +447,18 @@ def evaluate_reasoning_agent(
         "avg_time_incorrect": sum(incorrect_times) / len(incorrect_times) if incorrect_times else 0
     }
     
+    # Calculate PRM-specific statistics
+    if use_prm_selection and prm_stats["iterations_selected"]:
+        prm_stats["avg_selected_iteration"] = np.mean(prm_stats["iterations_selected"])
+        prm_stats["median_selected_iteration"] = np.median(prm_stats["iterations_selected"])
+        prm_stats["selection_improvement_rate"] = (prm_stats["selection_improvements"] / total * 100) if total > 0 else 0
+        
+        # Calculate average rewards
+        all_mean_rewards = [score.get("mean_reward", 0) for score in prm_stats["reward_scores"]]
+        if all_mean_rewards:
+            prm_stats["avg_mean_reward"] = np.mean(all_mean_rewards)
+            prm_stats["std_mean_reward"] = np.std(all_mean_rewards)
+    
     agent_stats = agent.get_stats()
     agent_stats.update({
         "num_iterations": num_iterations,
@@ -414,6 +524,12 @@ def evaluate_reasoning_agent(
             "avg_compute_params_per_problem": avg_compute_params_per_problem
         },
         
+        "prm_selection": {
+            "enabled": use_prm_selection,
+            "selection_metric": prm_selection_metric if use_prm_selection else None,
+            **prm_stats
+        } if use_prm_selection else {"enabled": False},
+        
         "error_analysis": error_analysis,
         
         "configuration": agent_config
@@ -441,6 +557,15 @@ def evaluate_reasoning_agent(
         print(f"Overall Accuracy: {final_accuracy:.2f}%")
         print(f"Total time: {total_time:.2f}s")
         print(f"Avg time per problem: {total_time / total:.2f}s")
+        
+        if use_prm_selection:
+            print(f"\n--- PRM SELECTION STATISTICS ---")
+            print(f"  Selection metric: {prm_selection_metric}")
+            print(f"  Avg selected iteration: {prm_stats.get('avg_selected_iteration', 0):.2f}")
+            print(f"  Median selected iteration: {prm_stats.get('median_selected_iteration', 0):.2f}")
+            print(f"  Times PRM selected non-last iteration: {prm_stats['selection_improvements']}/{total} ({prm_stats.get('selection_improvement_rate', 0):.2f}%)")
+            if "avg_mean_reward" in prm_stats:
+                print(f"  Avg mean reward: {prm_stats['avg_mean_reward']:.4f} ± {prm_stats['std_mean_reward']:.4f}")
         
         print(f"\n--- ACCURACY BY {problem_type_key.upper()} ---")
         for ptype, acc in accuracy_by_type.items():
@@ -526,6 +651,8 @@ def evaluate_dataset(
     prompts = get_prompts()
     
     num_iterations = config["eval"].get("num_iterations", 20)
+    use_prm_selection = config["eval"].get("use_prm_selection", True)
+    prm_selection_metric = config["eval"].get("prm_selection_metric", "mean_reward")
     
     if dataset_name.lower() == "math":
         core = MATHCore(agent, prompts)
@@ -599,6 +726,8 @@ def evaluate_dataset(
         pathway_filename_template=pathway_template,
         prompt_kwargs={},
         num_iterations=num_iterations,
+        use_prm_selection=use_prm_selection,
+        prm_selection_metric=prm_selection_metric,
         problem_key="problem",
         gold_answer_key="gold_answer_extracted",
         problem_type_key="problem_type",
@@ -611,7 +740,7 @@ def evaluate_dataset(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Universal Agent Evaluation")
+    parser = argparse.ArgumentParser(description="Universal Agent Evaluation with PRM Selection")
     parser.add_argument(
         "--config", 
         type=str, 
@@ -631,13 +760,37 @@ def main():
         default=True,
         help="Print detailed progress"
     )
+    parser.add_argument(
+        "--no-prm",
+        action="store_true",
+        help="Disable PRM-based iteration selection"
+    )
+    parser.add_argument(
+        "--prm-metric",
+        type=str,
+        default="mean_reward",
+        choices=["mean_reward", "min_reward", "final_reward"],
+        help="Metric to use for PRM selection"
+    )
     
     args = parser.parse_args()
     
     config = load_config(args.config)
     
+    # Override config with command line arguments
+    if args.no_prm:
+        config["eval"]["use_prm_selection"] = False
+    else:
+        config["eval"]["use_prm_selection"] = True
+    
+    config["eval"]["prm_selection_metric"] = args.prm_metric
+    
     print(f"\n{'='*70}")
     print(f"UNIVERSAL AGENT EVALUATION - {args.dataset.upper()} DATASET")
+    if config["eval"].get("use_prm_selection", True):
+        print(f"PRM Selection: ENABLED (metric: {args.prm_metric})")
+    else:
+        print(f"PRM Selection: DISABLED")
     print(f"{'='*70}\n")
     
     results = evaluate_dataset(

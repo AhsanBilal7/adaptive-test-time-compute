@@ -42,7 +42,8 @@ def _provided(x):
 
 @dataclass
 class UniversalResponse:
-    reasoning: Optional[str]
+    reasoning: Optional[str]  # Concatenated reasoning for backward compatibility
+    reasoning_steps: List[str]  # Individual reasoning steps for PRM
     answer: str
     answer_unstructured: str
     plan: Optional[str]
@@ -178,16 +179,16 @@ class UniversalAgent:
         messages = self.prompt_builder.get_prompt(self.plan, prompts["system_prompt"])
         
         if not self.use_tool_selector and not self.fixed_tool:
-            reasoning, answer_structured, answer_unstructured = self._execute_direct(
+            reasoning, reasoning_steps, answer_structured, answer_unstructured = self._execute_direct(
                 problem, prompts
             )
         else:
             if self.use_tool_selector:
-                reasoning, answer_structured, answer_unstructured = self._execute_with_tools(
+                reasoning, reasoning_steps, answer_structured, answer_unstructured = self._execute_with_tools(
                     problem, messages, prompts
                 )
             else:
-                reasoning, answer_structured, answer_unstructured = self._execute_simple(
+                reasoning, reasoning_steps, answer_structured, answer_unstructured = self._execute_simple(
                     problem, messages, prompts
                 )
         
@@ -205,6 +206,7 @@ class UniversalAgent:
         
         return UniversalResponse(
             reasoning=reasoning,
+            reasoning_steps=reasoning_steps,
             answer=answer_structured,
             answer_unstructured=answer_unstructured,
             plan=self.plan,
@@ -257,7 +259,11 @@ class UniversalAgent:
         self.compute_configs_used.append({"strategy": "none", "param": 0})
         self.compute_metadata_history.append(metadata)
         
-        return "", final_answer_structured, final_answer_unstructured
+        # For direct mode, create a single reasoning step
+        reasoning_text = "Direct solution approach used."
+        reasoning_steps = [reasoning_text]
+        
+        return "", reasoning_steps, final_answer_structured, final_answer_unstructured
 
     def _execute_simple(self, problem, messages, prompts):
         tool_name = self.fixed_tool if self.fixed_tool else "cot"
@@ -312,13 +318,25 @@ class UniversalAgent:
         
         self.compute_metadata_history.append(metadata)
         
+        # Create reasoning steps list
+        reasoning_steps = []
+        if reasoning:
+            # Split reasoning by common delimiters (newlines, double newlines, etc.)
+            # You can customize this splitting logic based on your reasoning format
+            steps = [s.strip() for s in reasoning.split('\n') if s.strip()]
+            reasoning_steps.extend(steps)
+        
+        # If no steps were created, use the full reasoning as a single step
+        if not reasoning_steps:
+            reasoning_steps = [reasoning] if reasoning else [""]
+        
         full_reasoning = f"\n--- {tool_name.upper()} OUTPUT ---\nAction: {action}\nReasoning: {reasoning}"
         
         answer_structured, answer_unstructured = self._extract_final_answers(
             problem, full_reasoning, prompts
         )
         
-        return full_reasoning, answer_structured, answer_unstructured
+        return full_reasoning, reasoning_steps, answer_structured, answer_unstructured
     
     def _execute_with_tools(self, problem, messages, prompts):
         tool_selection = self.tool_selector.select_tool(
@@ -334,6 +352,7 @@ class UniversalAgent:
         self.tools_used = selected_tools
         
         accumulated_reasoning = []
+        reasoning_steps = []  # Track individual steps for PRM
         
         for tool_name in selected_tools:
             if tool_name in ["self_reflection", "cot"]:
@@ -367,6 +386,9 @@ class UniversalAgent:
                     accumulated_reasoning.append(f"Action: {action}")
                     if reasoning:
                         accumulated_reasoning.append(f"Reasoning: {reasoning}")
+                        # Add individual reasoning steps
+                        steps = [s.strip() for s in reasoning.split('\n') if s.strip()]
+                        reasoning_steps.extend(steps)
                     
                     metadata = {
                         "tool": tool_name,
@@ -387,7 +409,14 @@ class UniversalAgent:
                     
                     accumulated_reasoning.append(f"\n--- {tool_name.upper()} OUTPUT (with {compute_config['strategy']}) ---")
                     accumulated_reasoning.append(f"Best action: {action}")
-                    accumulated_reasoning.append(f"Best Reasoning: {metadata.get('chosen_reasoning', '')}")
+                    chosen_reasoning = metadata.get('chosen_reasoning', '')
+                    accumulated_reasoning.append(f"Best Reasoning: {chosen_reasoning}")
+                    
+                    # Add individual reasoning steps
+                    if chosen_reasoning:
+                        steps = [s.strip() for s in chosen_reasoning.split('\n') if s.strip()]
+                        reasoning_steps.extend(steps)
+                    
                     metadata["tool"] = tool_name
                 
                 self.compute_metadata_history.append(metadata)
@@ -403,6 +432,7 @@ class UniversalAgent:
                 )
                 accumulated_reasoning.append(f"\n--- NUMERIC VERIFICATION ---")
                 accumulated_reasoning.append(f"Verification result: {result}")
+                reasoning_steps.append(f"Numeric verification: {result}")
                 self.compute_metadata_history.append({"tool": "numeric_verifier", "result": result})
             
             elif tool_name == "verifier":
@@ -416,6 +446,7 @@ class UniversalAgent:
                 )
                 accumulated_reasoning.append(f"\n--- GENERAL VERIFICATION ---")
                 accumulated_reasoning.append(f"Verification result: {result}")
+                reasoning_steps.append(f"General verification: {result}")
                 self.compute_metadata_history.append({"tool": "verifier", "result": result})
             
             elif tool_name == "summarizer":
@@ -423,6 +454,7 @@ class UniversalAgent:
                 summary = self.summarizer.summarize("\n".join(accumulated_reasoning))
                 accumulated_reasoning.append(f"\n--- SUMMARY ---")
                 accumulated_reasoning.append(f"{summary}")
+                reasoning_steps.append(f"Summary: {summary}")
                 self.compute_metadata_history.append({"tool": "summarizer", "summary": summary})
             
             elif tool_name == "reframe":
@@ -430,6 +462,7 @@ class UniversalAgent:
                 reframed = self.reframe_tool.reframe(problem, self.plan)
                 accumulated_reasoning.append(f"\n--- REFRAMED PROBLEM ---")
                 accumulated_reasoning.append(f"{reframed}")
+                reasoning_steps.append(f"Reframed: {reframed}")
                 self.compute_metadata_history.append({"tool": "reframe", "reframed": reframed})
             
             elif tool_name == "web_search":
@@ -437,7 +470,12 @@ class UniversalAgent:
                 results = self.web_tool.search(problem)
                 accumulated_reasoning.append(f"\n--- WEB SEARCH RESULTS ---")
                 accumulated_reasoning.append(f"{results}")
+                reasoning_steps.append(f"Web search: {results}")
                 self.compute_metadata_history.append({"tool": "web_search", "results": results})
+        
+        # Ensure we have at least one reasoning step
+        if not reasoning_steps:
+            reasoning_steps = ["\n".join(accumulated_reasoning)]
         
         full_reasoning = "\n".join(accumulated_reasoning)
         
@@ -445,7 +483,7 @@ class UniversalAgent:
             problem, full_reasoning, prompts
         )
         
-        return full_reasoning, answer_structured, answer_unstructured
+        return full_reasoning, reasoning_steps, answer_structured, answer_unstructured
     
     def _extract_final_answers(self, problem, full_reasoning, prompts):
         final_messages_structured = [

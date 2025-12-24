@@ -492,7 +492,7 @@ def main():
     parser.add_argument(
         "--pathway_file",
         type=str,
-        default="./dynamic_results/math_mode-dynamic_planner-True_toolsel-True_computesel-True_pathway.json",
+        default="./dynamic_results_testing_with_prm/math_mode-dynamic_planner-True_toolsel-True_computesel-True_pathway.json",
         help="Path to the pathway JSON file"
     )
     parser.add_argument(

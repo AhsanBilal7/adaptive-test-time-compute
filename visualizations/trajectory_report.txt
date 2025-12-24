@@ -3,50 +3,51 @@ TRAJECTORY ANALYSIS REPORT
 ================================================================================
 
 Dataset Statistics:
-  Total Problems: 5
+  Total Problems: 500
   Iterations per Problem: 20
-  Total Iterations: 100
+  Total Iterations: 10000
 
 --------------------------------------------------------------------------------
 Tool Usage Statistics:
 --------------------------------------------------------------------------------
-  cot                      :     99 times (40.74%)
-  numeric_verifier         :     67 times (27.57%)
-  verifier                 :     31 times (12.76%)
-  reframe                  :     26 times (10.70%)
-  web_search               :     10 times ( 4.12%)
-  self_reflection          :      7 times ( 2.88%)
-  summarizer               :      3 times ( 1.23%)
+  cot                      :   9658 times (38.53%)
+  numeric_verifier         :   7062 times (28.17%)
+  verifier                 :   3381 times (13.49%)
+  reframe                  :   2872 times (11.46%)
+  self_reflection          :    914 times ( 3.65%)
+  web_search               :    873 times ( 3.48%)
+  summarizer               :    305 times ( 1.22%)
 
 --------------------------------------------------------------------------------
 Compute Strategy Statistics:
 --------------------------------------------------------------------------------
-  direct                   :    137 times (56.38%)
-  best_of_n                :    103 times (42.39%)
-  beam_search              :      3 times ( 1.23%)
+  direct                   :  14493 times (57.82%)
+  best_of_n                :   9585 times (38.24%)
+  beam_search              :    985 times ( 3.93%)
+  lookahead                :      2 times ( 0.01%)
 
 --------------------------------------------------------------------------------
 Compute Parameter Statistics:
 --------------------------------------------------------------------------------
-  Mean Parameter Value: 2.69
+  Mean Parameter Value: 2.68
   Median Parameter Value: 1.00
   Min Parameter Value: 1.00
   Max Parameter Value: 6.00
-  Std Dev Parameter Value: 1.97
+  Std Dev Parameter Value: 1.99
 
 --------------------------------------------------------------------------------
 Timing Statistics:
 --------------------------------------------------------------------------------
-  Mean Iteration Time: 15.12 seconds
-  Median Iteration Time: 8.77 seconds
-  Min Iteration Time: 3.19 seconds
-  Max Iteration Time: 85.50 seconds
-  Total Time: 1512.02 seconds
+  Mean Iteration Time: 9.34 seconds
+  Median Iteration Time: 5.03 seconds
+  Min Iteration Time: 1.40 seconds
+  Max Iteration Time: 135.29 seconds
+  Total Time: 93419.85 seconds
 
 --------------------------------------------------------------------------------
 Planning Statistics:
 --------------------------------------------------------------------------------
-  Iterations with Plan: 98 (98.00%)
-  Iterations without Plan: 2 (2.00%)
+  Iterations with Plan: 9951 (99.51%)
+  Iterations without Plan: 49 (0.49%)
 
 ================================================================================
