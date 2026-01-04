@@ -1,0 +1,2 @@
+{"qid": "dev_0", "preferred_run_id": "dev_0_run2", "rejected_run_id": "dev_0_run0", "preference_type": "hard_negative", "score_diff": 1.0}
+{"qid": "dev_0", "preferred_run_id": "dev_0_run2", "rejected_run_id": "dev_0_run5", "preference_type": "efficiency_negative", "score_diff": 0.04700000000000004}

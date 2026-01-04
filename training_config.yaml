@@ -1,0 +1,160 @@
+# Example Training Configuration
+# Save this as: training_config.yaml
+
+# Data Configuration
+data:
+  train_trajectories: "./training_data/rollouts_train.jsonl"
+  val_trajectories: "./training_data/rollouts_dev.jsonl"
+  train_preferences: "./training_data/preferences_train.jsonl"
+  val_preferences: "./training_data/preferences_dev.jsonl"
+  
+  # Preference pair generation
+  min_score_margin: 0.1
+  max_pairs_per_problem: 10  # null for unlimited
+
+# Model Configuration
+model:
+  base_model: "meta-llama/Llama-3.2-3B-Instruct"
+  # Alternative models:
+  # base_model: "meta-llama/Llama-3.1-8B-Instruct"
+  # base_model: "mistralai/Mistral-7B-Instruct-v0.3"
+  # base_model: "Qwen/Qwen2.5-7B-Instruct"
+  
+  load_in_4bit: true
+  load_in_8bit: false
+
+# LoRA Configuration
+lora:
+  use_lora: true
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+# SFT Training Configuration
+sft:
+  output_dir: "./models/controller_sft"
+  
+  # Training hyperparameters
+  num_epochs: 3
+  batch_size: 4
+  gradient_accumulation_steps: 4
+  learning_rate: 2.0e-4
+  warmup_steps: 100
+  
+  # Data settings
+  use_correct_only: true
+  include_plan: true
+  format_style: "conversation"  # "conversation" or "instruction"
+  max_length: 2048
+  
+  # Optimization
+  optim: "adamw_torch"
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  
+  # Logging and checkpointing
+  logging_steps: 10
+  eval_steps: 100
+  save_steps: 500
+  save_total_limit: 3
+
+# GRPO Training Configuration
+grpo:
+  output_dir: "./models/controller_grpo"
+  
+  # Training hyperparameters
+  num_epochs: 3
+  batch_size: 4
+  gradient_accumulation_steps: 4
+  learning_rate: 5.0e-5
+  warmup_steps: 100
+  
+  # DPO-specific
+  beta: 0.1  # Temperature parameter (0.05-0.2)
+  
+  # Data settings
+  include_plan: true
+  include_reasoning: false
+  max_length: 2048
+  max_prompt_length: 1024
+  
+  # Optimization
+  optim: "adamw_torch"
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  
+  # Logging and checkpointing
+  logging_steps: 10
+  eval_steps: 100
+  save_steps: 500
+  save_total_limit: 3
+
+# Inference Configuration
+inference:
+  temperature: 0.7
+  max_new_tokens: 256
+  min_confidence: 0.3
+  
+  # Fallback configuration (used when confidence is low)
+  fallback:
+    tool: "cot"
+    compute_strategy: "best_of_n"
+    compute_param: 1
+
+# Logging Configuration
+logging:
+  use_wandb: false
+  wandb_project: "controller-training"
+  wandb_entity: null  # Your W&B username/team
+  log_level: "INFO"
+
+# Hardware Configuration
+hardware:
+  fp16: true
+  bf16: false
+  gradient_checkpointing: true
+  
+  # Multi-GPU settings
+  num_gpus: 1
+  distributed_backend: "nccl"
+  
+  # DeepSpeed (optional)
+  use_deepspeed: false
+  deepspeed_config: null
+
+# Evaluation Configuration
+evaluation:
+  test_problems:
+    - "What is the sum of the first 100 positive integers?"
+    - "Solve the quadratic equation x^2 - 5x + 6 = 0"
+    - "Find the derivative of f(x) = x^3 + 2x^2 - 5x + 1"
+    - "A rectangle has length 12 and width 8. What is its area?"
+    - "If 3x + 5 = 20, what is the value of x?"
+  
+  metrics:
+    - tool_selection_accuracy
+    - compute_efficiency
+    - solution_accuracy
+    - confidence_calibration
+
+# Advanced Settings
+advanced:
+  # Curriculum learning
+  use_curriculum: false
+  curriculum_strategy: "easy_to_hard"  # Based on score_diff
+  
+  # Data augmentation
+  augment_data: false
+  augmentation_factor: 2
+  
+  # Mixed precision training
+  use_apex: false
+  apex_opt_level: "O1"

@@ -1,0 +1,427 @@
+"""
+Dataset classes for Controller Policy Training
+Supports both SFT and GRPO training formats
+"""
+
+import json
+import torch
+from pathlib import Path
+from typing import List, Dict, Any, Optional, Tuple
+from torch.utils.data import Dataset
+from dataclasses import dataclass
+
+
+@dataclass
+class ControllerTrainingExample:
+    """
+    Single training example for controller policy.
+    
+    The controller learns to map:
+    (problem, context) -> (tool_selection, compute_strategy)
+    """
+    problem: str
+    plan: Optional[str]
+    selected_tool: str
+    compute_strategy: str
+    compute_param: int
+    reasoning: str
+    final_answer: str
+    is_correct: bool
+    trajectory_id: str
+    metadata: Dict[str, Any]
+
+
+class ControllerSFTDataset(Dataset):
+    """
+    Dataset for Supervised Fine-Tuning (SFT) of controller policy.
+    
+    Loads trajectories and creates training examples that teach the model
+    to predict tool and compute strategy selections.
+    """
+    
+    def __init__(
+        self,
+        trajectories_file: str,
+        tokenizer,
+        max_length: int = 2048,
+        use_correct_only: bool = True,
+        include_plan: bool = True,
+        format_style: str = "conversation"  # "conversation" or "instruction"
+    ):
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+        self.use_correct_only = use_correct_only
+        self.include_plan = include_plan
+        self.format_style = format_style
+        
+        self.examples = self._load_trajectories(trajectories_file)
+        
+        print(f"[INFO] Loaded {len(self.examples)} SFT examples")
+        if use_correct_only:
+            print(f"  Using correct trajectories only")
+        else:
+            print(f"  Using both correct and incorrect trajectories")
+    
+    def _load_trajectories(self, filepath: str) -> List[ControllerTrainingExample]:
+        """Load trajectories and convert to training examples."""
+        filepath = Path(filepath)
+        if not filepath.exists():
+            raise FileNotFoundError(f"Trajectories file not found: {filepath}")
+        
+        examples = []
+        with open(filepath, "r") as f:
+            for line in f:
+                traj = json.loads(line)
+                
+                # Filter by correctness if specified
+                if self.use_correct_only and not traj.get("correct", False):
+                    continue
+                
+                # Extract controller decisions
+                selected_tools = traj.get("selected_tools", [])
+                compute_configs = traj.get("compute_configs", [])
+                
+                # Handle case where multiple tools/strategies are used
+                # For now, use the first one (primary decision)
+                selected_tool = selected_tools[0] if selected_tools else "cot"
+                
+                compute_config = compute_configs[0] if compute_configs else {
+                    "strategy": "best_of_n",
+                    "param": 1
+                }
+                
+                example = ControllerTrainingExample(
+                    problem=traj.get("problem", ""),
+                    plan=traj.get("plan"),
+                    selected_tool=selected_tool,
+                    compute_strategy=compute_config.get("strategy", "best_of_n"),
+                    compute_param=compute_config.get("param", 1),
+                    reasoning=self._extract_reasoning(traj),
+                    final_answer=traj.get("final_answer_unstructured", ""),
+                    is_correct=traj.get("correct", False),
+                    trajectory_id=traj.get("run_id", ""),
+                    metadata=traj.get("metadata", {})
+                )
+                
+                examples.append(example)
+        
+        return examples
+    
+    def _extract_reasoning(self, traj: Dict) -> str:
+        """Extract reasoning text from trajectory steps."""
+        steps = traj.get("steps", [])
+        reasoning_parts = []
+        
+        for step in steps:
+            reasoning_steps = step.get("reasoning_steps", [])
+            reasoning_parts.extend(reasoning_steps)
+        
+        return "\n".join(reasoning_parts) if reasoning_parts else ""
+    
+    def _format_example_conversation(self, example: ControllerTrainingExample) -> str:
+        """
+        Format example in conversation style for training.
+        
+        Format:
+        <|user|>
+        Problem: {problem}
+        [Plan: {plan}]
+        
+        Select the best reasoning tool and compute strategy for this problem.
+        <|assistant|>
+        I will use {tool} with {strategy}({param}) because...
+        {reasoning}
+        Final Answer: {answer}
+        """
+        # User message
+        user_msg = f"Problem: {example.problem}\n"
+        
+        if self.include_plan and example.plan:
+            user_msg += f"\nPlan: {example.plan}\n"
+        
+        user_msg += "\nSelect the best reasoning tool and compute strategy for this problem, then solve it."
+        
+        # Assistant message (target)
+        assistant_msg = (
+            f"I will use the {example.selected_tool} reasoning tool "
+            f"with {example.compute_strategy}(n={example.compute_param}) strategy.\n\n"
+        )
+        
+        if example.reasoning:
+            assistant_msg += f"Reasoning:\n{example.reasoning}\n\n"
+        
+        assistant_msg += f"Final Answer: {example.final_answer}"
+        
+        # Combine
+        formatted = f"<|user|>\n{user_msg}\n<|assistant|>\n{assistant_msg}"
+        
+        return formatted
+    
+    def _format_example_instruction(self, example: ControllerTrainingExample) -> str:
+        """
+        Format example in instruction style.
+        
+        Format:
+        ### Instruction:
+        Given the following problem, select optimal tool and compute strategy, then solve.
+        
+        ### Problem:
+        {problem}
+        
+        ### Response:
+        Tool: {tool}
+        Strategy: {strategy}({param})
+        
+        {reasoning}
+        
+        Answer: {answer}
+        """
+        instruction = (
+            "### Instruction:\n"
+            "Given the following mathematical problem, select the optimal reasoning tool "
+            "and compute strategy, then solve the problem.\n\n"
+        )
+        
+        problem_section = f"### Problem:\n{example.problem}\n"
+        
+        if self.include_plan and example.plan:
+            problem_section += f"\n### Plan:\n{example.plan}\n"
+        
+        response_section = (
+            f"\n### Response:\n"
+            f"**Tool Selection:** {example.selected_tool}\n"
+            f"**Compute Strategy:** {example.compute_strategy}(n={example.compute_param})\n\n"
+            f"**Reasoning:**\n{example.reasoning}\n\n"
+            f"**Final Answer:** {example.final_answer}"
+        )
+        
+        formatted = instruction + problem_section + response_section
+        
+        return formatted
+    
+    def __len__(self) -> int:
+        return len(self.examples)
+    
+    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+        example = self.examples[idx]
+        
+        # Format based on style
+        if self.format_style == "conversation":
+            text = self._format_example_conversation(example)
+        else:
+            text = self._format_example_instruction(example)
+        
+        # Tokenize
+        encoding = self.tokenizer(
+            text,
+            max_length=self.max_length,
+            padding="max_length",
+            truncation=True,
+            return_tensors="pt"
+        )
+        
+        # Only return tensors that the collator can handle
+        # Store metadata separately if needed for analysis
+        return {
+            "input_ids": encoding["input_ids"].squeeze(0),
+            "attention_mask": encoding["attention_mask"].squeeze(0),
+            "labels": encoding["input_ids"].squeeze(0),  # For causal LM
+        }
+
+
+class ControllerGRPODataset(Dataset):
+    """
+    Dataset for Group Relative Policy Optimization (GRPO) training.
+    
+    Loads preference pairs where each pair consists of:
+    - Preferred trajectory (correct/efficient)
+    - Rejected trajectory (incorrect/inefficient)
+    
+    The model learns to assign higher probability to preferred trajectories.
+    """
+    
+    def __init__(
+        self,
+        preferences_file: str,
+        tokenizer,
+        max_length: int = 2048,
+        include_plan: bool = True,
+        include_reasoning: bool = False,  # Whether to include full reasoning
+        format_style: str = "conversation"
+    ):
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+        self.include_plan = include_plan
+        self.include_reasoning = include_reasoning
+        self.format_style = format_style
+        
+        self.pairs = self._load_preferences(preferences_file)
+        
+        print(f"[INFO] Loaded {len(self.pairs)} GRPO preference pairs")
+    
+    def _load_preferences(self, filepath: str) -> List[Dict]:
+        """Load preference pairs from file."""
+        filepath = Path(filepath)
+        if not filepath.exists():
+            raise FileNotFoundError(f"Preferences file not found: {filepath}")
+        
+        pairs = []
+        with open(filepath, "r") as f:
+            for line in f:
+                pair = json.loads(line)
+                pairs.append(pair)
+        
+        return pairs
+    
+    def _format_trajectory_for_policy(
+        self, 
+        problem: str,
+        plan: Optional[str],
+        trajectory: Dict
+    ) -> str:
+        """
+        Format a trajectory for policy learning.
+        
+        Focus on the controller's decisions (tool and compute strategy)
+        rather than the full reasoning trace.
+        """
+        # User query
+        user_msg = f"Problem: {problem}\n"
+        
+        if self.include_plan and plan:
+            user_msg += f"\nPlan: {plan}\n"
+        
+        user_msg += "\nSelect the best reasoning tool and compute strategy for this problem."
+        
+        # Assistant decision
+        selected_tools = trajectory.get("selected_tools", [])
+        compute_configs = trajectory.get("compute_configs", [])
+        
+        tool = selected_tools[0] if selected_tools else "cot"
+        config = compute_configs[0] if compute_configs else {"strategy": "best_of_n", "param": 1}
+        
+        assistant_msg = (
+            f"I will use the {tool} reasoning tool "
+            f"with {config.get('strategy', 'best_of_n')}(n={config.get('param', 1)}) strategy."
+        )
+        
+        # Optionally include reasoning
+        if self.include_reasoning:
+            reasoning = self._extract_trajectory_reasoning(trajectory)
+            if reasoning:
+                assistant_msg += f"\n\nReasoning:\n{reasoning}"
+        
+        # Include final answer
+        final_answer = trajectory.get("final_answer", "")
+        if final_answer:
+            assistant_msg += f"\n\nFinal Answer: {final_answer}"
+        
+        # Format based on style
+        if self.format_style == "conversation":
+            formatted = f"<|user|>\n{user_msg}\n<|assistant|>\n{assistant_msg}"
+        else:
+            formatted = (
+                f"### Problem:\n{user_msg}\n\n"
+                f"### Response:\n{assistant_msg}"
+            )
+        
+        return formatted
+    
+    def _extract_trajectory_reasoning(self, trajectory: Dict) -> str:
+        """Extract reasoning from trajectory steps."""
+        steps = trajectory.get("steps", [])
+        reasoning_parts = []
+        
+        for step in steps:
+            reasoning_steps = step.get("reasoning_steps", [])
+            reasoning_parts.extend(reasoning_steps)
+        
+        # Limit length
+        full_reasoning = "\n".join(reasoning_parts)
+        if len(full_reasoning) > 1000:
+            full_reasoning = full_reasoning[:1000] + "..."
+        
+        return full_reasoning
+    
+    def __len__(self) -> int:
+        return len(self.pairs)
+    
+    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+        pair = self.pairs[idx]
+        
+        problem = pair["problem"]
+        preferred_traj = pair["preferred_trajectory"]
+        rejected_traj = pair["rejected_trajectory"]
+        
+        # Format preferred trajectory
+        preferred_text = self._format_trajectory_for_policy(
+            problem=problem,
+            plan=preferred_traj.get("plan"),
+            trajectory=preferred_traj
+        )
+        
+        # Format rejected trajectory
+        rejected_text = self._format_trajectory_for_policy(
+            problem=problem,
+            plan=rejected_traj.get("plan"),
+            trajectory=rejected_traj
+        )
+        
+        # Tokenize preferred
+        preferred_encoding = self.tokenizer(
+            preferred_text,
+            max_length=self.max_length,
+            padding="max_length",
+            truncation=True,
+            return_tensors="pt"
+        )
+        
+        # Tokenize rejected
+        rejected_encoding = self.tokenizer(
+            rejected_text,
+            max_length=self.max_length,
+            padding="max_length",
+            truncation=True,
+            return_tensors="pt"
+        )
+        
+        return {
+            "preferred_input_ids": preferred_encoding["input_ids"].squeeze(0),
+            "preferred_attention_mask": preferred_encoding["attention_mask"].squeeze(0),
+            "rejected_input_ids": rejected_encoding["input_ids"].squeeze(0),
+            "rejected_attention_mask": rejected_encoding["attention_mask"].squeeze(0),
+            "score_diff": pair.get("score_diff", 0.0),
+            "pair_type": pair.get("pair_type", "unknown"),
+            "qid": pair.get("qid", "")
+        }
+
+
+def create_dataloaders(
+    train_dataset: Dataset,
+    val_dataset: Optional[Dataset],
+    batch_size: int = 8,
+    num_workers: int = 4,
+    shuffle_train: bool = True
+):
+    """Create data loaders for training and validation."""
+    from torch.utils.data import DataLoader
+    
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=shuffle_train,
+        num_workers=num_workers,
+        pin_memory=True
+    )
+    
+    val_loader = None
+    if val_dataset is not None:
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+            pin_memory=True
+        )
+    
+    return train_loader, val_loader
