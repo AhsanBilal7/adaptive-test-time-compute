@@ -69,6 +69,8 @@ class ControllerSFTDataset(Dataset):
             raise FileNotFoundError(f"Trajectories file not found: {filepath}")
         
         examples = []
+        formatted_data = []  # For saving formatted dataset
+        
         with open(filepath, "r") as f:
             for line in f:
                 traj = json.loads(line)
@@ -104,8 +106,69 @@ class ControllerSFTDataset(Dataset):
                 )
                 
                 examples.append(example)
+                
+                # Store formatted version for saving
+                formatted_data.append({
+                    "problem": example.problem,
+                    "plan": example.plan,
+                    "selected_tool": example.selected_tool,
+                    "compute_strategy": example.compute_strategy,
+                    "compute_param": example.compute_param,
+                    "reasoning": example.reasoning,
+                    "final_answer": example.final_answer,
+                    "is_correct": example.is_correct,
+                    "trajectory_id": example.trajectory_id
+                })
+        
+        # Save formatted dataset
+        self._save_formatted_dataset(filepath, formatted_data)
         
         return examples
+    
+    def _save_formatted_dataset(self, original_filepath: Path, formatted_data: List[Dict]):
+        """Save formatted SFT dataset for inspection."""
+        output_dir = original_filepath.parent
+        split_name = original_filepath.stem.replace("rollouts_", "")
+        
+        # Save as JSONL
+        output_file = output_dir / f"sft_dataset_{split_name}.jsonl"
+        with open(output_file, 'w') as f:
+            for example in formatted_data:
+                f.write(json.dumps(example) + '\n')
+        
+        print(f"[INFO] Saved SFT dataset to: {output_file}")
+        
+        # Save human-readable sample
+        sample_file = output_dir / f"sft_dataset_{split_name}_sample.txt"
+        with open(sample_file, 'w') as f:
+            f.write("="*70 + "\n")
+            f.write("SFT DATASET SAMPLES\n")
+            f.write("="*70 + "\n\n")
+            
+            # Save first 3 examples
+            for i in range(min(3, len(formatted_data))):
+                example = formatted_data[i]
+                f.write(f"--- Example {i+1} ---\n\n")
+                f.write(f"Problem: {example['problem']}\n\n")
+                
+                if example['plan']:
+                    f.write(f"Plan: {example['plan']}\n\n")
+                
+                f.write(f"Selected Tool: {example['selected_tool']}\n")
+                f.write(f"Compute Strategy: {example['compute_strategy']}(n={example['compute_param']})\n\n")
+                
+                if example['reasoning']:
+                    reasoning_preview = example['reasoning'][:200]
+                    if len(example['reasoning']) > 200:
+                        reasoning_preview += "..."
+                    f.write(f"Reasoning:\n{reasoning_preview}\n\n")
+                
+                f.write(f"Final Answer: {example['final_answer']}\n")
+                f.write(f"Is Correct: {example['is_correct']}\n")
+                f.write(f"Trajectory ID: {example['trajectory_id']}\n")
+                f.write("\n" + "="*70 + "\n\n")
+        
+        print(f"[INFO] Saved sample to: {sample_file}")
     
     def _extract_reasoning(self, traj: Dict) -> str:
         """Extract reasoning text from trajectory steps."""

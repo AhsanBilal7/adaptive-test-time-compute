@@ -82,7 +82,7 @@ grpo:
   
   # Data settings
   include_plan: true
-  include_reasoning: false
+  include_reasoning: true
   max_length: 2048
   max_prompt_length: 1024
   

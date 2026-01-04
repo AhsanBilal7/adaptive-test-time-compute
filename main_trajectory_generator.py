@@ -9,9 +9,7 @@ from src.dataset_generation.trajectory_generator import *
 
 if __name__ == "__main__":
 
-    # -----------------------------
-    # (Copied from attached file)
-    # -----------------------------
+
     def load_config(config_path: str) -> dict:
         with open(config_path, "r") as f:
             config = yaml.safe_load(f)
@@ -31,9 +29,7 @@ if __name__ == "__main__":
     # Build client_factory using the config["client"] section
     client_factory = create_llm_client(DictConfig(config["client"]))
 
-    # -----------------------------
-    # Your existing snippet
-    # -----------------------------
+
     prompts = {
         "system_prompt": MATH_SYSTEM_PROMPT,
         "planning_prompt_template": PLANNING_PROMPT_TEMPLATE,

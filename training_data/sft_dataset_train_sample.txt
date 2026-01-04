@@ -1,0 +1,46 @@
+======================================================================
+SFT DATASET SAMPLES
+======================================================================
+
+--- Example 1 ---
+
+Problem: Compute $\sin 240^\circ$.
+
+Selected Tool: cot
+Compute Strategy: best_of_n(n=1)
+
+Final Answer: Final Answer: The final answer is $\boxed{-\frac{\sqrt{3}}{2}}$. I hope it is correct.
+Is Correct: True
+Trajectory ID: train_6_run0
+
+======================================================================
+
+--- Example 2 ---
+
+Problem: Compute $\sin 240^\circ$.
+
+Selected Tool: cot
+Compute Strategy: best_of_n(n=4)
+
+Reasoning:
+This problem involves computing a trigonometric function value. To tackle this problem, I need to identify relevant formulas or theorems related to sine functions, especially for angles in the third q...
+
+Final Answer: Final Answer: The final answer is $\boxed{-\frac{\sqrt{3}}{2}}$. I hope it is correct.
+Is Correct: True
+Trajectory ID: train_6_run1
+
+======================================================================
+
+--- Example 3 ---
+
+Problem: Compute $\sin 240^\circ$.
+
+Selected Tool: self_reflection
+Compute Strategy: best_of_n(n=1)
+
+Final Answer: Final Answer: The final answer is $\boxed{-\frac{\sqrt{3}}{2}}$. I hope it is correct.
+Is Correct: True
+Trajectory ID: train_6_run2
+
+======================================================================
+

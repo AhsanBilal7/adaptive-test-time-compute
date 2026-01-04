@@ -156,6 +156,7 @@ class GRPOTrainer:
         max_length: int = 2048,
         include_plan: bool = True,
         include_reasoning: bool = False,
+        save_dataset: bool = True,
     ) -> Dataset:
         """
         Prepare dataset in DPO format.
@@ -164,6 +165,16 @@ class GRPOTrainer:
         - prompt: The input prompt
         - chosen: Preferred completion
         - rejected: Rejected completion
+        
+        Args:
+            preferences_file: Path to preference pairs JSONL
+            max_length: Maximum sequence length
+            include_plan: Include planning context
+            include_reasoning: Include full reasoning
+            save_dataset: Save formatted dataset to disk
+        
+        Returns:
+            HuggingFace Dataset object
         """
         # Load preference pairs
         print(f"[INFO] Loading preferences from: {preferences_file}")
@@ -237,6 +248,43 @@ class GRPOTrainer:
         dataset = Dataset.from_dict(dpo_data)
         
         print(f"[INFO] Created DPO dataset with {len(dataset)} examples")
+        
+        # Save dataset if requested
+        if save_dataset:
+            # Determine output path
+            preferences_path = Path(preferences_file)
+            output_dir = preferences_path.parent
+            split_name = preferences_path.stem.replace("preferences_", "")
+            
+            # Save as JSONL
+            output_file = output_dir / f"dpo_dataset_{split_name}.jsonl"
+            with open(output_file, 'w') as f:
+                for i in range(len(dataset)):
+                    example = dataset[i]
+                    f.write(json.dumps(example) + '\n')
+            
+            print(f"[INFO] Saved DPO dataset to: {output_file}")
+            
+            # Also save a human-readable sample
+            sample_file = output_dir / f"dpo_dataset_{split_name}_sample.txt"
+            with open(sample_file, 'w') as f:
+                f.write("="*70 + "\n")
+                f.write("DPO DATASET SAMPLES\n")
+                f.write("="*70 + "\n\n")
+                
+                # Save first 3 examples
+                for i in range(min(3, len(dataset))):
+                    example = dataset[i]
+                    f.write(f"--- Example {i+1} ---\n\n")
+                    f.write(f"PROMPT:\n{example['prompt']}\n\n")
+                    f.write(f"CHOSEN (Preferred):\n{example['chosen']}\n\n")
+                    f.write(f"REJECTED:\n{example['rejected']}\n\n")
+                    f.write(f"Score Diff: {example['score_diff']:.2f}\n")
+                    f.write(f"Pair Type: {example['pair_type']}\n")
+                    f.write("\n" + "="*70 + "\n\n")
+            
+            print(f"[INFO] Saved sample to: {sample_file}")
+        
         return dataset
     
     def train(
