@@ -48,6 +48,8 @@ class UniversalResponse:
     answer_unstructured: str
     plan: Optional[str]
     metadata: Dict[str, Any]
+    compute_strategy_outputs: List[Dict[str, Any]]  # Outputs from compute strategies
+    reasoner_outputs: List[Dict[str, Any]]  # Outputs from reasoners
 
 
 class UniversalPromptBuilder:
@@ -133,6 +135,10 @@ class UniversalAgent:
         self.tools_used = []
         self.compute_configs_used = []
         
+        # New tracking for outputs
+        self.compute_strategy_outputs = []
+        self.reasoner_outputs = []
+        
         self.tool_selector = None
         self.compute_selector = None
         self.prm_model = None
@@ -170,6 +176,10 @@ class UniversalAgent:
         prompts: Dict[str, str],
     ) -> UniversalResponse:
         self.prompt_builder.set_problem(problem)
+        
+        # Reset tracking
+        self.compute_strategy_outputs = []
+        self.reasoner_outputs = []
         
         if self.use_planner and prompts.get("planning_prompt_template"):
             self.plan = self._make_plan(problem, prompts["planning_prompt_template"])
@@ -210,7 +220,9 @@ class UniversalAgent:
             answer=answer_structured,
             answer_unstructured=answer_unstructured,
             plan=self.plan,
-            metadata=metadata
+            metadata=metadata,
+            compute_strategy_outputs=self.compute_strategy_outputs,
+            reasoner_outputs=self.reasoner_outputs
         )
     
     def _make_plan(self, problem, planning_prompt_template):
@@ -263,6 +275,16 @@ class UniversalAgent:
         reasoning_text = "Direct solution approach used."
         reasoning_steps = [reasoning_text]
         
+        # Track outputs
+        self.compute_strategy_outputs.append({
+            "strategy": "none",
+            "output": "Direct solve without compute strategy"
+        })
+        self.reasoner_outputs.append({
+            "reasoner": "direct",
+            "output": final_answer_structured
+        })
+        
         return "", reasoning_steps, final_answer_structured, final_answer_unstructured
 
     def _execute_simple(self, problem, messages, prompts):
@@ -302,6 +324,25 @@ class UniversalAgent:
                 "compute_strategy": "direct",
                 "compute_config": compute_config,
             }
+            
+            # Track reasoner output
+            self.reasoner_outputs.append({
+                "reasoner": tool_name,
+                "action": action,
+                "reasoning": reasoning,
+                "messages": messages,
+                "instruction_prompt": instruction_prompt
+            })
+            
+            # Track compute strategy output (direct)
+            self.compute_strategy_outputs.append({
+                "strategy": "direct",
+                "param": 1,
+                "output": {
+                    "action": action,
+                    "reasoning": reasoning
+                }
+            })
         else:
             compute_strategy = get_compute_strategy(compute_config["strategy"], self.prm_model)
             action, metadata = compute_strategy.execute(
@@ -315,18 +356,39 @@ class UniversalAgent:
             )
             metadata["tool"] = tool_name
             reasoning = metadata.get('chosen_reasoning', '')
+            
+            # Track compute strategy output
+            self.compute_strategy_outputs.append({
+                "strategy": compute_config["strategy"],
+                "param": compute_config["param"],
+                "output": {
+                    "action": action,
+                    "metadata": metadata,
+                    "all_candidates": metadata.get('candidates', []),
+                    "all_reasoning_texts": metadata.get('reasoning_texts', []),
+                    "scores": metadata.get('scores', []),
+                    "chosen_index": metadata.get('chosen_index', 0),
+                    "chosen_reasoning": reasoning
+                }
+            })
+            
+            # Track reasoner output (best from compute strategy)
+            self.reasoner_outputs.append({
+                "reasoner": tool_name,
+                "action": action,
+                "reasoning": reasoning,
+                "compute_enhanced": True,
+                "num_candidates": metadata.get('num_scored', 1)
+            })
         
         self.compute_metadata_history.append(metadata)
         
         # Create reasoning steps list
         reasoning_steps = []
         if reasoning:
-            # Split reasoning by common delimiters (newlines, double newlines, etc.)
-            # You can customize this splitting logic based on your reasoning format
             steps = [s.strip() for s in reasoning.split('\n') if s.strip()]
             reasoning_steps.extend(steps)
         
-        # If no steps were created, use the full reasoning as a single step
         if not reasoning_steps:
             reasoning_steps = [reasoning] if reasoning else [""]
         
@@ -352,7 +414,7 @@ class UniversalAgent:
         self.tools_used = selected_tools
         
         accumulated_reasoning = []
-        reasoning_steps = []  # Track individual steps for PRM
+        reasoning_steps = []
         
         for tool_name in selected_tools:
             if tool_name in ["self_reflection", "cot"]:
@@ -386,7 +448,6 @@ class UniversalAgent:
                     accumulated_reasoning.append(f"Action: {action}")
                     if reasoning:
                         accumulated_reasoning.append(f"Reasoning: {reasoning}")
-                        # Add individual reasoning steps
                         steps = [s.strip() for s in reasoning.split('\n') if s.strip()]
                         reasoning_steps.extend(steps)
                     
@@ -395,6 +456,25 @@ class UniversalAgent:
                         "compute_strategy": "direct",
                         "compute_config": compute_config,
                     }
+                    
+                    # Track reasoner output
+                    self.reasoner_outputs.append({
+                        "reasoner": tool_name,
+                        "action": action,
+                        "reasoning": reasoning,
+                        "messages": messages,
+                        "instruction_prompt": instruction_prompt
+                    })
+                    
+                    # Track compute strategy output (direct)
+                    self.compute_strategy_outputs.append({
+                        "strategy": "direct",
+                        "param": 1,
+                        "output": {
+                            "action": action,
+                            "reasoning": reasoning
+                        }
+                    })
                 else:
                     compute_strategy = get_compute_strategy(compute_config["strategy"], self.prm_model)
                     action, metadata = compute_strategy.execute(
@@ -412,12 +492,40 @@ class UniversalAgent:
                     chosen_reasoning = metadata.get('chosen_reasoning', '')
                     accumulated_reasoning.append(f"Best Reasoning: {chosen_reasoning}")
                     
-                    # Add individual reasoning steps
                     if chosen_reasoning:
                         steps = [s.strip() for s in chosen_reasoning.split('\n') if s.strip()]
                         reasoning_steps.extend(steps)
                     
                     metadata["tool"] = tool_name
+                    
+                    # Track compute strategy output
+                    self.compute_strategy_outputs.append({
+                        "strategy": compute_config["strategy"],
+                        "param": compute_config["param"],
+                        "output": {
+                            "action": action,
+                            "metadata": metadata,
+                            "all_candidates": metadata.get('candidates', []),
+                            "all_reasoning_texts": metadata.get('reasoning_texts', []),
+                            "scores": metadata.get('scores', []),
+                            "chosen_index": metadata.get('chosen_index', 0),
+                            "chosen_reasoning": chosen_reasoning,
+                            # Include beam/lookahead specific data
+                            "beam": metadata.get('beam', []),
+                            "beam_reasoning": metadata.get('beam_reasoning', []),
+                            "beam_scores": metadata.get('beam_scores', []),
+                            "all_rollouts": metadata.get('all_rollouts', []),
+                        }
+                    })
+                    
+                    # Track reasoner output (best from compute strategy)
+                    self.reasoner_outputs.append({
+                        "reasoner": tool_name,
+                        "action": action,
+                        "reasoning": chosen_reasoning,
+                        "compute_enhanced": True,
+                        "num_candidates": metadata.get('num_scored', 1)
+                    })
                 
                 self.compute_metadata_history.append(metadata)
             
@@ -434,6 +542,12 @@ class UniversalAgent:
                 accumulated_reasoning.append(f"Verification result: {result}")
                 reasoning_steps.append(f"Numeric verification: {result}")
                 self.compute_metadata_history.append({"tool": "numeric_verifier", "result": result})
+                
+                # Track tool output
+                self.reasoner_outputs.append({
+                    "reasoner": "numeric_verifier",
+                    "output": result
+                })
             
             elif tool_name == "verifier":
                 self.compute_configs_used.append({"strategy": "direct", "param": 1})
@@ -448,6 +562,12 @@ class UniversalAgent:
                 accumulated_reasoning.append(f"Verification result: {result}")
                 reasoning_steps.append(f"General verification: {result}")
                 self.compute_metadata_history.append({"tool": "verifier", "result": result})
+                
+                # Track tool output
+                self.reasoner_outputs.append({
+                    "reasoner": "verifier",
+                    "output": result
+                })
             
             elif tool_name == "summarizer":
                 self.compute_configs_used.append({"strategy": "direct", "param": 1})
@@ -456,6 +576,12 @@ class UniversalAgent:
                 accumulated_reasoning.append(f"{summary}")
                 reasoning_steps.append(f"Summary: {summary}")
                 self.compute_metadata_history.append({"tool": "summarizer", "summary": summary})
+                
+                # Track tool output
+                self.reasoner_outputs.append({
+                    "reasoner": "summarizer",
+                    "output": summary
+                })
             
             elif tool_name == "reframe":
                 self.compute_configs_used.append({"strategy": "direct", "param": 1})
@@ -464,6 +590,12 @@ class UniversalAgent:
                 accumulated_reasoning.append(f"{reframed}")
                 reasoning_steps.append(f"Reframed: {reframed}")
                 self.compute_metadata_history.append({"tool": "reframe", "reframed": reframed})
+                
+                # Track tool output
+                self.reasoner_outputs.append({
+                    "reasoner": "reframe",
+                    "output": reframed
+                })
             
             elif tool_name == "web_search":
                 self.compute_configs_used.append({"strategy": "direct", "param": 1})
@@ -472,8 +604,13 @@ class UniversalAgent:
                 accumulated_reasoning.append(f"{results}")
                 reasoning_steps.append(f"Web search: {results}")
                 self.compute_metadata_history.append({"tool": "web_search", "results": results})
+                
+                # Track tool output
+                self.reasoner_outputs.append({
+                    "reasoner": "web_search",
+                    "output": results
+                })
         
-        # Ensure we have at least one reasoning step
         if not reasoning_steps:
             reasoning_steps = ["\n".join(accumulated_reasoning)]
         
@@ -557,6 +694,8 @@ class UniversalAgent:
         self.compute_metadata_history = []
         self.tools_used = []
         self.compute_configs_used = []
+        self.compute_strategy_outputs = []
+        self.reasoner_outputs = []
         
         if self.tool_selector:
             self.tool_selector.reset()
