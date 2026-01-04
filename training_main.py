@@ -354,7 +354,7 @@ class ControllerTrainingMain:
                 max_length=grpo_config.get('max_length', 2048),
                 max_prompt_length=grpo_config.get('max_prompt_length', 1024),
                 include_plan=grpo_config.get('include_plan', True),
-                include_reasoning=grpo_config.get('include_reasoning', False),
+                include_reasoning=grpo_config.get('include_reasoning', True),  # Changed to True
                 use_wandb=logging_config.get('use_wandb', False),
                 wandb_project=logging_config.get('wandb_project', 'controller-grpo'),
             )

@@ -287,6 +287,29 @@ class MATHCore:
     def extract_prediction(response: UniversalResponse, problem_data: Dict) -> str:
         return extract_math_prediction(response, problem_data)
     
+
+    @staticmethod
+    def get_last_dollar_normalize_final_answer(answer: str) -> str:
+        """
+        Returns the last LaTeX expression enclosed in $...$ or $$...$$.
+        Ignores escaped dollars like \$
+        """
+
+        # 1) display math: $$...$$  (DOTALL so it spans newlines)
+        disp = list(re.finditer(r"(?<!\\)\$\$(.+?)(?<!\\)\$\$", answer, flags=re.DOTALL))
+
+        # 2) inline math: $...$ (but not $$...$$)
+        # Negative lookahead/lookbehind to avoid grabbing the $$ delimiters
+        inline = list(re.finditer(r"(?<!\\)\$(?!\$)(.+?)(?<!\\)\$(?!\$)", answer, flags=re.DOTALL))
+        # Combine, pick the last by end position
+        all_matches = disp + inline
+        if not all_matches:
+            return None
+
+        last = max(all_matches, key=lambda m: m.end())
+        return last.group(1).strip()
+
+
     def solve(self, problem: str) -> UniversalResponse:
         return self.agent.solve(problem, self.prompts)
     

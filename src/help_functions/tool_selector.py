@@ -9,7 +9,6 @@ _VALID_TOOLS = (
     "verifier",
     "summarizer",
     "reframe",
-    "web_search",
 )
 
 _DEFAULT = {"tools": ["cot"]}

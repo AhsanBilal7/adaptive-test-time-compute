@@ -10,7 +10,6 @@ Tool = Literal[
     "verifier",
     "summarizer",
     "reframe",
-    "web_search",
 ]
 
 

@@ -1,2 +1,0 @@
-{"qid": "train_6", "preferred_run_id": "train_6_run0", "rejected_run_id": "train_6_run3", "preference_type": "hard_negative", "score_diff": 1.015}
-{"qid": "train_6", "preferred_run_id": "train_6_run0", "rejected_run_id": "train_6_run7", "preference_type": "efficiency_negative", "score_diff": 0.052000000000000046}

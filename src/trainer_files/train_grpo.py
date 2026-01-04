@@ -159,18 +159,18 @@ class GRPOTrainer:
         save_dataset: bool = True,
     ) -> Dataset:
         """
-        Prepare dataset in DPO format.
+        Prepare dataset in DPO format with complete trajectory information.
         
         DPO expects dataset with columns:
         - prompt: The input prompt
-        - chosen: Preferred completion
-        - rejected: Rejected completion
+        - chosen: Preferred completion (with full details)
+        - rejected: Rejected completion (with full details)
         
         Args:
             preferences_file: Path to preference pairs JSONL
             max_length: Maximum sequence length
             include_plan: Include planning context
-            include_reasoning: Include full reasoning
+            include_reasoning: Include full reasoning and tool outputs
             save_dataset: Save formatted dataset to disk
         
         Returns:
@@ -207,35 +207,19 @@ class GRPOTrainer:
                 if plan:
                     prompt += f"\nPlan: {plan}\n"
             
-            prompt += "\nSelect the best reasoning tool and compute strategy for this problem."
+            prompt += "\nSelect the best reasoning tool and compute strategy for this problem, then solve it step by step."
             
-            # Create chosen response (preferred trajectory)
-            chosen_tools = preferred_traj.get("selected_tools", [])
-            chosen_config = preferred_traj.get("compute_configs", [{}])[0]
-            
-            chosen = (
-                f"I will use the {chosen_tools[0] if chosen_tools else 'cot'} reasoning tool "
-                f"with {chosen_config.get('strategy', 'best_of_n')}(n={chosen_config.get('param', 1)}) strategy."
+            # Create chosen response (preferred trajectory) WITH FULL DETAILS
+            chosen = self._format_trajectory_response(
+                preferred_traj,
+                include_reasoning=include_reasoning
             )
             
-            if include_reasoning:
-                chosen_answer = preferred_traj.get("final_answer", "")
-                if chosen_answer:
-                    chosen += f"\n\nFinal Answer: {chosen_answer}"
-            
-            # Create rejected response
-            rejected_tools = rejected_traj.get("selected_tools", [])
-            rejected_config = rejected_traj.get("compute_configs", [{}])[0]
-            
-            rejected = (
-                f"I will use the {rejected_tools[0] if rejected_tools else 'cot'} reasoning tool "
-                f"with {rejected_config.get('strategy', 'best_of_n')}(n={rejected_config.get('param', 1)}) strategy."
+            # Create rejected response WITH FULL DETAILS
+            rejected = self._format_trajectory_response(
+                rejected_traj,
+                include_reasoning=include_reasoning
             )
-            
-            if include_reasoning:
-                rejected_answer = rejected_traj.get("final_answer", "")
-                if rejected_answer:
-                    rejected += f"\n\nFinal Answer: {rejected_answer}"
             
             # Add to dataset
             dpo_data["prompt"].append(prompt)
@@ -286,6 +270,94 @@ class GRPOTrainer:
             print(f"[INFO] Saved sample to: {sample_file}")
         
         return dataset
+    
+    def _format_trajectory_response(
+        self,
+        trajectory: Dict,
+        include_reasoning: bool = False
+    ) -> str:
+        """
+        Format a complete trajectory response with all tool and compute information.
+        
+        Args:
+            trajectory: Trajectory dictionary with steps, tools, compute configs
+            include_reasoning: Whether to include full reasoning trace
+        
+        Returns:
+            Formatted response string
+        """
+        # Extract tools and compute configs
+        selected_tools = trajectory.get("selected_tools", [])
+        compute_configs = trajectory.get("compute_configs", [])
+        
+        tool = selected_tools[0] if selected_tools else "cot"
+        config = compute_configs[0] if compute_configs else {"strategy": "best_of_n", "param": 1}
+        
+        # Start with tool and strategy selection
+        response = (
+            f"I will use the {tool} reasoning tool "
+            f"with {config.get('strategy', 'best_of_n')}(n={config.get('param', 1)}) strategy.\n\n"
+        )
+        
+        # Include tool execution details
+        steps = trajectory.get("steps", [])
+        if steps and include_reasoning:
+            response += "**Tool Execution:**\n"
+            for i, step in enumerate(steps[:3], 1):  # First 3 steps
+                tool_name = step.get("tool_name", "unknown")
+                
+                # Get reasoner output
+                reasoner_output = step.get("reasoner_output", {})
+                if reasoner_output:
+                    action = reasoner_output.get("action", "")
+                    reasoning = reasoner_output.get("reasoning", "")
+                    
+                    if action:
+                        response += f"{i}. {tool_name}: {action}\n"
+                    if reasoning:
+                        reasoning_preview = reasoning[:150] + "..." if len(reasoning) > 150 else reasoning
+                        response += f"   Reasoning: {reasoning_preview}\n"
+                
+                # Get compute strategy output
+                compute_output = step.get("compute_strategy_output", {})
+                if compute_output:
+                    strategy = compute_output.get("strategy", "")
+                    param = compute_output.get("param", 0)
+                    output_data = compute_output.get("output", {})
+                    
+                    candidates = output_data.get("candidates", [])
+                    scores = output_data.get("scores", [])
+                    
+                    if candidates:
+                        response += f"   Compute: {strategy}(n={param}) - {len(candidates)} candidates generated\n"
+                        if scores:
+                            response += f"   Best score: {max(scores):.2f}\n"
+            
+            response += "\n"
+        
+        # Include reasoning steps
+        if include_reasoning:
+            all_reasoning = []
+            for step in steps:
+                reasoning_steps = step.get("reasoning_steps", [])
+                all_reasoning.extend(reasoning_steps)
+            
+            if all_reasoning:
+                reasoning_text = "\n".join(all_reasoning[:5])  # First 5 reasoning steps
+                if len(all_reasoning) > 5:
+                    reasoning_text += "\n..."
+                response += f"**Reasoning:**\n{reasoning_text}\n\n"
+        
+        # Final answer
+        final_answer = trajectory.get("final_answer", "")
+        if not final_answer:
+            # Try alternative fields
+            final_answer = trajectory.get("final_answer_unstructured", "")
+        
+        if final_answer:
+            response += f"**Final Answer:** {final_answer}"
+        
+        return response
     
     def train(
         self,

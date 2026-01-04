@@ -162,36 +162,36 @@ class PreferencePairGenerator:
             else:
                 stats["skipped_no_incorrect"] += 1
             
-            # ===== TYPE 2: Efficiency Pairs =====
-            # Best correct vs less efficient correct trajectories
-            if len(correct_trajs) > 1:
-                sorted_correct = sorted(
-                    correct_trajs, 
-                    key=lambda t: t["quality_score"], 
-                    reverse=True
-                )
+            # # ===== TYPE 2: Efficiency Pairs =====
+            # # Best correct vs less efficient correct trajectories
+            # if len(correct_trajs) > 1:
+            #     sorted_correct = sorted(
+            #         correct_trajs, 
+            #         key=lambda t: t["quality_score"], 
+            #         reverse=True
+            #     )
                 
-                # Create pairs with increasingly inefficient correct trajectories
-                for inefficient_traj in sorted_correct[1:]:
-                    score_diff = best_correct["quality_score"] - inefficient_traj["quality_score"]
+            #     # Create pairs with increasingly inefficient correct trajectories
+            #     for inefficient_traj in sorted_correct[1:]:
+            #         score_diff = best_correct["quality_score"] - inefficient_traj["quality_score"]
                     
-                    if score_diff >= self.min_score_margin:
-                        pair = {
-                            "qid": qid,
-                            "problem": best_correct["problem"],
-                            "preferred_trajectory": self._extract_trajectory_data(best_correct),
-                            "rejected_trajectory": self._extract_trajectory_data(inefficient_traj),
-                            "score_diff": float(score_diff),
-                            "pair_type": "efficiency",
-                            "metadata": {
-                                "preferred_run_id": best_correct["run_id"],
-                                "rejected_run_id": inefficient_traj["run_id"],
-                                "preferred_config": best_correct.get("config", {}),
-                                "rejected_config": inefficient_traj.get("config", {}),
-                            }
-                        }
-                        problem_pairs.append(pair)
-                        stats["efficiency_pairs"] += 1
+            #         if score_diff >= self.min_score_margin:
+            #             pair = {
+            #                 "qid": qid,
+            #                 "problem": best_correct["problem"],
+            #                 "preferred_trajectory": self._extract_trajectory_data(best_correct),
+            #                 "rejected_trajectory": self._extract_trajectory_data(inefficient_traj),
+            #                 "score_diff": float(score_diff),
+            #                 "pair_type": "efficiency",
+            #                 "metadata": {
+            #                     "preferred_run_id": best_correct["run_id"],
+            #                     "rejected_run_id": inefficient_traj["run_id"],
+            #                     "preferred_config": best_correct.get("config", {}),
+            #                     "rejected_config": inefficient_traj.get("config", {}),
+            #                 }
+            #             }
+            #             problem_pairs.append(pair)
+            #             stats["efficiency_pairs"] += 1
             
             # ===== TYPE 3: Margin-Based Pairs =====
             # Create pairs with varied score differences for curriculum learning

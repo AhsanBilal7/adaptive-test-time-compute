@@ -92,17 +92,20 @@ class ControllerSFTDataset(Dataset):
                     "param": 1
                 }
                 
+                # Extract detailed reasoning including tool outputs
+                reasoning, metadata = self._extract_reasoning_with_details(traj)
+                
                 example = ControllerTrainingExample(
                     problem=traj.get("problem", ""),
                     plan=traj.get("plan"),
                     selected_tool=selected_tool,
                     compute_strategy=compute_config.get("strategy", "best_of_n"),
                     compute_param=compute_config.get("param", 1),
-                    reasoning=self._extract_reasoning(traj),
-                    final_answer=traj.get("final_answer_unstructured", ""),
+                    reasoning=reasoning,
+                    final_answer=traj.get("final_answer", traj.get("final_answer_unstructured", "")),
                     is_correct=traj.get("correct", False),
                     trajectory_id=traj.get("run_id", ""),
-                    metadata=traj.get("metadata", {})
+                    metadata=metadata
                 )
                 
                 examples.append(example)
@@ -117,13 +120,91 @@ class ControllerSFTDataset(Dataset):
                     "reasoning": example.reasoning,
                     "final_answer": example.final_answer,
                     "is_correct": example.is_correct,
-                    "trajectory_id": example.trajectory_id
+                    "trajectory_id": example.trajectory_id,
+                    "metadata": {
+                        "tool_results": metadata.get("tool_results", []),
+                        "compute_results": metadata.get("compute_results", []),
+                        "num_steps": len(traj.get("steps", []))
+                    }
                 })
         
         # Save formatted dataset
         self._save_formatted_dataset(filepath, formatted_data)
         
         return examples
+    
+    def _extract_reasoning_with_details(self, traj: Dict) -> Tuple[str, Dict[str, Any]]:
+        """
+        Extract reasoning text AND metadata from trajectory steps.
+        
+        Returns:
+            (reasoning_text, metadata_dict)
+        """
+        steps = traj.get("steps", [])
+        reasoning_parts = []
+        tool_results = []
+        compute_results = []
+        
+        for step in steps:
+            # Extract tool information
+            tool_name = step.get("tool_name", "unknown")
+            tool_output = step.get("tool_output", "")
+            
+            # Extract reasoning steps
+            reasoning_steps = step.get("reasoning_steps", [])
+            if reasoning_steps:
+                reasoning_parts.extend(reasoning_steps)
+            
+            # Extract reasoner output
+            reasoner_output = step.get("reasoner_output", {})
+            if reasoner_output:
+                reasoner_type = reasoner_output.get("reasoner", "")
+                reasoner_reasoning = reasoner_output.get("reasoning", "")
+                reasoner_action = reasoner_output.get("action", "")
+                
+                if reasoner_reasoning:
+                    reasoning_parts.append(f"[{reasoner_type}] {reasoner_reasoning}")
+                if reasoner_action:
+                    reasoning_parts.append(f"Action: {reasoner_action}")
+            
+            # Store tool results
+            if tool_name != "unknown":
+                tool_results.append({
+                    "tool": tool_name,
+                    "output": tool_output[:200] if tool_output else ""  # Truncate long outputs
+                })
+            
+            # Extract compute strategy information
+            compute_output = step.get("compute_strategy_output", {})
+            if compute_output:
+                strategy = compute_output.get("strategy", "")
+                param = compute_output.get("param", 0)
+                output_data = compute_output.get("output", {})
+                
+                # Extract candidate information
+                candidates = output_data.get("candidates", [])
+                scores = output_data.get("scores", [])
+                
+                compute_results.append({
+                    "strategy": strategy,
+                    "param": param,
+                    "num_candidates": len(candidates),
+                    "best_score": max(scores) if scores else 0.0,
+                    "candidates": candidates[:3]  # Store first 3 candidates
+                })
+        
+        # Combine reasoning
+        full_reasoning = "\n".join(reasoning_parts) if reasoning_parts else ""
+        
+        # Build metadata
+        metadata = {
+            "tool_results": tool_results,
+            "compute_results": compute_results,
+            "num_tools_used": len(traj.get("selected_tools", [])),
+            "total_compute_budget": sum(c.get("param", 0) for c in traj.get("compute_configs", []))
+        }
+        
+        return full_reasoning, metadata
     
     def _save_formatted_dataset(self, original_filepath: Path, formatted_data: List[Dict]):
         """Save formatted SFT dataset for inspection."""
@@ -185,16 +266,13 @@ class ControllerSFTDataset(Dataset):
         """
         Format example in conversation style for training.
         
-        Format:
-        <|user|>
-        Problem: {problem}
-        [Plan: {plan}]
-        
-        Select the best reasoning tool and compute strategy for this problem.
-        <|assistant|>
-        I will use {tool} with {strategy}({param}) because...
-        {reasoning}
-        Final Answer: {answer}
+        Includes complete information:
+        - Problem and plan
+        - Tool selection with rationale
+        - Compute strategy with results
+        - Full reasoning chain
+        - Tool outputs
+        - Final answer
         """
         # User message
         user_msg = f"Problem: {example.problem}\n"
@@ -202,18 +280,45 @@ class ControllerSFTDataset(Dataset):
         if self.include_plan and example.plan:
             user_msg += f"\nPlan: {example.plan}\n"
         
-        user_msg += "\nSelect the best reasoning tool and compute strategy for this problem, then solve it."
+        user_msg += "\nSelect the best reasoning tool and compute strategy for this problem, then solve it step by step."
         
-        # Assistant message (target)
+        # Assistant message (target) - ENHANCED with full details
         assistant_msg = (
             f"I will use the {example.selected_tool} reasoning tool "
             f"with {example.compute_strategy}(n={example.compute_param}) strategy.\n\n"
         )
         
-        if example.reasoning:
-            assistant_msg += f"Reasoning:\n{example.reasoning}\n\n"
+        # Add tool execution details if available in metadata
+        if example.metadata:
+            # Include tool outputs if available
+            tool_results = example.metadata.get('tool_results', [])
+            if tool_results:
+                assistant_msg += "**Tool Execution:**\n"
+                for i, result in enumerate(tool_results[:3], 1):  # Limit to first 3
+                    tool_name = result.get('tool', 'unknown')
+                    output = result.get('output', '')
+                    if output:
+                        output_preview = output[:150] + "..." if len(output) > 150 else output
+                        assistant_msg += f"{i}. {tool_name}: {output_preview}\n"
+                assistant_msg += "\n"
+            
+            # Include compute strategy results if available
+            compute_results = example.metadata.get('compute_results', [])
+            if compute_results:
+                assistant_msg += "**Compute Strategy Results:**\n"
+                for i, result in enumerate(compute_results[:2], 1):  # Limit to first 2
+                    strategy = result.get('strategy', 'unknown')
+                    num_candidates = result.get('num_candidates', 1)
+                    best_score = result.get('best_score', 0.0)
+                    assistant_msg += f"{i}. {strategy}: Generated {num_candidates} candidates, best score: {best_score:.2f}\n"
+                assistant_msg += "\n"
         
-        assistant_msg += f"Final Answer: {example.final_answer}"
+        # Main reasoning
+        if example.reasoning:
+            assistant_msg += f"**Reasoning:**\n{example.reasoning}\n\n"
+        
+        # Final answer
+        assistant_msg += f"**Final Answer:** {example.final_answer}"
         
         # Combine
         formatted = f"<|user|>\n{user_msg}\n<|assistant|>\n{assistant_msg}"

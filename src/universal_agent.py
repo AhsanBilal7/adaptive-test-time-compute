@@ -597,19 +597,6 @@ class UniversalAgent:
                     "output": reframed
                 })
             
-            elif tool_name == "web_search":
-                self.compute_configs_used.append({"strategy": "direct", "param": 1})
-                results = self.web_tool.search(problem)
-                accumulated_reasoning.append(f"\n--- WEB SEARCH RESULTS ---")
-                accumulated_reasoning.append(f"{results}")
-                reasoning_steps.append(f"Web search: {results}")
-                self.compute_metadata_history.append({"tool": "web_search", "results": results})
-                
-                # Track tool output
-                self.reasoner_outputs.append({
-                    "reasoner": "web_search",
-                    "output": results
-                })
         
         if not reasoning_steps:
             reasoning_steps = ["\n".join(accumulated_reasoning)]

@@ -52,8 +52,8 @@ if __name__ == "__main__":
         client_factory=client_factory,
         prompts=prompts,
         output_dir="./training_data",
-        max_train_problems=10,
-        max_dev_problems=5,
+        max_train_problems=2,
+        max_dev_problems=1,
         k_rollouts=10,
         num_epochs=10,
         batch_size=32
