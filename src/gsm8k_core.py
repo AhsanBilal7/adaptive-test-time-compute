@@ -48,12 +48,12 @@ def load_gsm8k_dataset(
 
 
 def check_gsm8k_answer_equivalence(pred: str, gold: str) -> bool:
-    pred_match = re.search(r'Final Answer: The final answer is\s*([^.]+)', pred)
+    pred_match = re.search(r'Final Answer: The final answer is\s*([^.]+)', str(pred))
     if pred_match:
         pred = pred_match.group(1).strip()
     
-    pred = pred.replace(',', '').replace('$', '').strip()
-    gold = gold.replace(',', '').replace('$', '').strip()
+    pred = str(pred).replace(',', '').replace('$', '').strip()
+    gold = str(gold).replace(',', '').replace('$', '').strip()
     
     if pred == gold:
         return True

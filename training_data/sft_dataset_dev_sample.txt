@@ -1,0 +1,58 @@
+======================================================================
+SFT DATASET SAMPLES
+======================================================================
+
+--- Example 1 ---
+
+Problem: Evaluate $\left(\dfrac{-2i}{5}\right)^2$.
+
+Plan: To solve this problem, I will first write out the expression with a clear exponent notation. Next, I will apply the exponent to each part of the fraction separately using the properties of exponents and complex numbers. Then, I will analyze the result to determine if further simplification or interpretation is needed.
+
+Selected Tool: cot
+Compute Strategy: best_of_n(n=5)
+
+Reasoning:
+I will choose the next action as "ReformulateProblem" because I need to rewrite the expression with a clear exponent notation, which involves expressing it in a more formal mathematical form that is c...
+
+Final Answer: Final Answer: The final answer is $\boxed{-\frac{4}{25}}$. I hope it is correct.
+Is Correct: True
+Trajectory ID: dev_0_run0
+
+======================================================================
+
+--- Example 2 ---
+
+Problem: Evaluate $\left(\dfrac{-2i}{5}\right)^2$.
+
+Plan: To evaluate the given expression, I will first rewrite it in a form that involves squaring a complex number with no denominator. This can be done by multiplying the numerator and denominator of the fraction by i, resulting in a new expression that is a perfect square of a complex number. Once this step is complete, I will apply the formula for squaring complex numbers.
+
+Selected Tool: cot
+Compute Strategy: best_of_n(n=5)
+
+Reasoning:
+The next logical action is to ReformulateProblem because the problem statement mentions a complex number expression that needs to be simplified. To proceed with evaluating the given expression, it wou...
+
+Final Answer: Final Answer: The final answer is $\boxed{-\frac{4}{25}}$. I hope it is correct.
+Is Correct: True
+Trajectory ID: dev_0_run1
+
+======================================================================
+
+--- Example 3 ---
+
+Problem: Evaluate $\left(\dfrac{-2i}{5}\right)^2$.
+
+Plan: We will first recall and apply the definition of raising a complex number to a power, which involves squaring the modulus and doubling the argument. We will then analyze the properties of the given complex number to determine its modulus and argument before applying these properties to raise it to the second power.
+
+Selected Tool: cot
+Compute Strategy: best_of_n(n=5)
+
+Reasoning:
+The next action is to break down the complex expression into a form that can be easily evaluated. Given the problem of raising a complex number to a power, we need to understand the properties and beh...
+
+Final Answer: Final Answer: The final answer is $\boxed{-\frac{4}{25}}$. I hope it is correct.
+Is Correct: True
+Trajectory ID: dev_0_run2
+
+======================================================================
+

@@ -51,9 +51,9 @@ if __name__ == "__main__":
     run_full_pipeline(
         client_factory=client_factory,
         prompts=prompts,
-        output_dir="./training_data",
-        max_train_problems=2,
-        max_dev_problems=1,
+        output_dir="./training_data_temp",
+        max_train_problems=1,
+        max_dev_problems=100,
         k_rollouts=10,
         num_epochs=10,
         batch_size=32

@@ -981,6 +981,352 @@ class ClaudeWrapper(LLMClientWrapper):
         )
 
 
+class TrainedModelWrapper(LLMClientWrapper):
+    """
+    Wrapper for trained LoRA models that implements the LLMClientWrapper interface.
+    
+    Provides compatibility with the existing LLM client infrastructure while
+    using a locally trained model for inference.
+    """
+
+    def __init__(self, client_config):
+        """
+        Initialize the TrainedModelWrapper with the given configuration.
+
+        Args:
+            client_config: Configuration object containing client-specific settings.
+                Expected additional fields:
+                - model_path: Path to the trained model/checkpoint
+                - load_in_4bit: Whether to use 4-bit quantization (default: True)
+                - torch_dtype: Torch dtype for model (default: "float16")
+                - device_map: Device mapping strategy (default: "auto")
+        """
+        super().__init__(client_config)
+        self._initialized = False
+        
+        # Model-specific configuration
+        self.model_path = getattr(client_config, 'model_path', None)
+        if not self.model_path:
+            raise ValueError("model_path must be provided in client_config for TrainedModelWrapper")
+        
+        self.load_in_4bit = getattr(client_config, 'load_in_4bit', True)
+        self.torch_dtype_str = getattr(client_config, 'torch_dtype', 'float16')
+        self.device_map = getattr(client_config, 'device_map', 'auto')
+
+    def _initialize_client(self):
+        """Initialize the trained model and tokenizer if not already initialized."""
+        if not self._initialized:
+            import torch
+            from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+            
+            logger.info(f"Loading trained model from: {self.model_path}")
+            
+            # Convert string dtype to torch dtype
+            dtype_mapping = {
+                'float16': torch.float16,
+                'float32': torch.float32,
+                'bfloat16': torch.bfloat16,
+            }
+            self.torch_dtype = dtype_mapping.get(self.torch_dtype_str, torch.float16)
+            
+            # Load tokenizer
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                self.model_path,
+                trust_remote_code=True
+            )
+            
+            # Set pad token if not present
+            if self.tokenizer.pad_token is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
+                self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
+            
+            # Configure quantization if requested
+            quantization_config = None
+            if self.load_in_4bit:
+                quantization_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_compute_dtype=self.torch_dtype,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_use_double_quant=True,
+                )
+            
+            # Load model
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.model_path,
+                quantization_config=quantization_config,
+                device_map=self.device_map,
+                trust_remote_code=True,
+                torch_dtype=self.torch_dtype if not quantization_config else None,
+            )
+            
+            self.model.eval()
+            self._initialized = True
+            logger.info(f"Successfully loaded trained model: {self.model_path}")
+
+    def convert_messages(self, messages):
+        """
+        Convert messages to the format expected by the trained model.
+
+        Args:
+            messages (list): A list of message objects with 'role' and 'content' attributes.
+
+        Returns:
+            str: Formatted prompt string for the model.
+        """
+        # Build a conversational prompt
+        prompt_parts = []
+        
+        for msg in messages:
+            role = msg.role
+            content = msg.content
+            
+            # Map roles to chat template format
+            if role == "system":
+                prompt_parts.append(f"<|system|>\n{content}")
+            elif role == "user":
+                prompt_parts.append(f"<|user|>\n{content}")
+            elif role == "assistant":
+                prompt_parts.append(f"<|assistant|>\n{content}")
+            else:
+                # Default to user role
+                prompt_parts.append(f"<|user|>\n{content}")
+        
+        # Add final assistant token to prompt generation
+        prompt_parts.append("<|assistant|>\n")
+        
+        prompt = "\n".join(prompt_parts)
+        return prompt
+
+    def generate(self, messages):
+        """
+        Generate a response from the trained model given a list of messages.
+
+        Args:
+            messages (list): A list of message objects.
+
+        Returns:
+            LLMResponse: The response from the trained model.
+        """
+        self._initialize_client()
+        prompt = self.convert_messages(messages)
+
+        def api_call():
+            import torch
+            
+            # Tokenize input
+            inputs = self.tokenizer(
+                prompt,
+                return_tensors="pt",
+                truncation=True,
+                max_length=2048,  # Adjust based on your model's context window
+            ).to(self.model.device)
+            
+            # Prepare generation kwargs
+            gen_kwargs = {
+                "max_new_tokens": self.client_kwargs.get("max_tokens", 512),
+                "do_sample": True,
+                "pad_token_id": self.tokenizer.pad_token_id,
+                "eos_token_id": self.tokenizer.eos_token_id,
+            }
+            
+            # Add temperature if specified and not None
+            temperature = self.client_kwargs.get("temperature")
+            if temperature is not None:
+                gen_kwargs["temperature"] = temperature
+                gen_kwargs["do_sample"] = temperature > 0
+            
+            # Add other sampling parameters if present
+            if "top_p" in self.client_kwargs:
+                gen_kwargs["top_p"] = self.client_kwargs["top_p"]
+            if "top_k" in self.client_kwargs:
+                gen_kwargs["top_k"] = self.client_kwargs["top_k"]
+            
+            # Generate response
+            with torch.no_grad():
+                outputs = self.model.generate(
+                    **inputs,
+                    **gen_kwargs
+                )
+            
+            # Decode response
+            generated_ids = outputs[0][inputs.input_ids.shape[1]:]
+            response_text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+            
+            # Calculate token counts
+            input_tokens = inputs.input_ids.shape[1]
+            output_tokens = len(generated_ids)
+            
+            return response_text, input_tokens, output_tokens
+
+        response_text, input_tokens, output_tokens = self.execute_with_retries(api_call)
+
+        return LLMResponse(
+            model_id=self.model_id,
+            completion=response_text.strip(),
+            stop_reason="stop",  # Simplified stop reason
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            reasoning=None,
+        )
+
+    def generate_with_structured(self, messages, schema):
+        """
+        Generate a structured JSON response from the trained model.
+
+        Args:
+            messages (list): A list of message objects.
+            schema (dict): JSON schema defining the expected output structure.
+
+        Returns:
+            LLMResponse: The response from the trained model with JSON content.
+        """
+        self._initialize_client()
+        
+        # Add JSON schema instruction to the prompt
+        schema_instruction = (
+            f"\n\nYou must respond with valid JSON matching this schema:\n"
+            f"```json\n{json.dumps(schema, indent=2)}\n```\n"
+            f"Respond only with the JSON object, no additional text."
+        )
+        
+        # Create modified messages with schema instruction
+        modified_messages = list(messages)
+        print(modified_messages[-1].keys())
+        if modified_messages and modified_messages[-1].role == "user":
+            # Create a new message object with updated content
+            last_msg = modified_messages[-1]
+            
+            # Create a simple object with the required attributes
+            class ModifiedMessage:
+                def __init__(self, role, content, attachment=None):
+                    self.role = role
+                    self.content = content
+                    self.attachment = attachment
+            
+            modified_messages[-1] = ModifiedMessage(
+                role=last_msg.role,
+                content=last_msg.content + schema_instruction,
+                attachment=getattr(last_msg, 'attachment', None)
+            )
+        
+        prompt = self.convert_messages(modified_messages)
+
+        def api_call():
+            import torch
+            
+            # Tokenize input
+            inputs = self.tokenizer(
+                prompt,
+                return_tensors="pt",
+                truncation=True,
+                max_length=2048,
+            ).to(self.model.device)
+            
+            # Prepare generation kwargs
+            gen_kwargs = {
+                "max_new_tokens": self.client_kwargs.get("max_tokens", 512),
+                "do_sample": True,
+                "pad_token_id": self.tokenizer.pad_token_id,
+                "eos_token_id": self.tokenizer.eos_token_id,
+            }
+            
+            # Add temperature if specified
+            temperature = self.client_kwargs.get("temperature")
+            if temperature is not None:
+                gen_kwargs["temperature"] = temperature
+                gen_kwargs["do_sample"] = temperature > 0
+            
+            # Add other sampling parameters
+            if "top_p" in self.client_kwargs:
+                gen_kwargs["top_p"] = self.client_kwargs["top_p"]
+            if "top_k" in self.client_kwargs:
+                gen_kwargs["top_k"] = self.client_kwargs["top_k"]
+            
+            # Generate response
+            with torch.no_grad():
+                outputs = self.model.generate(
+                    **inputs,
+                    **gen_kwargs
+                )
+            
+            # Decode response
+            generated_ids = outputs[0][inputs.input_ids.shape[1]:]
+            response_text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+            
+            # Calculate token counts
+            input_tokens = inputs.input_ids.shape[1]
+            output_tokens = len(generated_ids)
+            
+            # Try to extract JSON from response
+            response_text = self._extract_json(response_text)
+            
+            return response_text, input_tokens, output_tokens
+
+        response_text, input_tokens, output_tokens = self.execute_with_retries(api_call)
+
+        return LLMResponse(
+            model_id=self.model_id,
+            completion=response_text.strip(),
+            stop_reason="stop",
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            reasoning=None,
+        )
+
+    def _extract_json(self, text: str) -> str:
+        """
+        Extract JSON object from text that may contain markdown code blocks or extra text.
+
+        Args:
+            text: Raw text that may contain JSON
+
+        Returns:
+            Extracted JSON string, or original text if no JSON found
+        """
+        # Try to find JSON in markdown code blocks
+        import re
+        
+        # Pattern for ```json ... ``` blocks
+        json_block_pattern = r'```json\s*(.*?)\s*```'
+        matches = re.findall(json_block_pattern, text, re.DOTALL)
+        if matches:
+            return matches[0].strip()
+        
+        # Pattern for ``` ... ``` blocks (generic)
+        code_block_pattern = r'```\s*(.*?)\s*```'
+        matches = re.findall(code_block_pattern, text, re.DOTALL)
+        if matches:
+            # Check if it's valid JSON
+            for match in matches:
+                try:
+                    json.loads(match)
+                    return match.strip()
+                except json.JSONDecodeError:
+                    continue
+        
+        # Try to find JSON object directly
+        # Look for outermost { }
+        start_idx = text.find('{')
+        if start_idx != -1:
+            # Find matching closing brace
+            brace_count = 0
+            for i in range(start_idx, len(text)):
+                if text[i] == '{':
+                    brace_count += 1
+                elif text[i] == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        potential_json = text[start_idx:i+1]
+                        try:
+                            json.loads(potential_json)
+                            return potential_json
+                        except json.JSONDecodeError:
+                            pass
+        
+        # If no JSON found, return original text
+        return text
+
+
 def create_llm_client(client_config):
     """
     Factory function to create the appropriate LLM client based on the client name.
@@ -1004,6 +1350,9 @@ def create_llm_client(client_config):
             return GoogleGenerativeAIWrapper(client_config)
         elif "claude" in client_name_lower:
             return ClaudeWrapper(client_config)
+        elif "trained_model" in client_name_lower or "trained" in client_name_lower:
+            # Use trained model wrapper for locally trained models
+            return TrainedModelWrapper(client_config)
         else:
             raise ValueError(f"Unsupported client name: {client_config.client_name}")
 
