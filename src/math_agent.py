@@ -263,6 +263,8 @@ def check_answer_equivalence(pred: str, gold: str) -> bool:
     pred_normalized = normalize_final_answer(pred_extracted)
     gold_normalized = normalize_final_answer(gold)
     
+
+
     # Check exact string match first
     if pred_normalized == gold_normalized:
         return True

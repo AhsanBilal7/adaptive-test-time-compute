@@ -110,7 +110,8 @@ class PRMSelector:
         problem: str,
         iteration_results: List[Dict[str, Any]],
         selection_metric: str,
-        system_prompt: str
+        system_prompt: str, 
+        meta_data=None
     ) -> Tuple[int, Dict[str, Any], List[Dict[str, Any]]]:
         
         all_scores = []
@@ -118,12 +119,23 @@ class PRMSelector:
         print(f"[INFO] Scoring {len(iteration_results)} iterations with PRM...")
         
         for idx, iter_result in enumerate(iteration_results):
-            reasoning_steps = iter_result.get("reasoning_steps", [])
+            reasoning_steps = []
+            predicted_answer = iter_result.get("predicted_answer", "")
             
-            if not reasoning_steps:
-                reasoning = iter_result.get("reasoning", "")
-                reasoning_steps = [reasoning] if reasoning else [""]
-            
+            if meta_data and (meta_data.get("use_tool_selector") or meta_data.get("fixed_tool")):
+                # Case 1: Tool selector or fixed tool - add reasoning steps AND final answer
+                reasoning_steps = iter_result.get("reasoning_steps", [])
+                if not reasoning_steps:
+                    reasoning = iter_result.get("reasoning", "")
+                    reasoning_steps = [reasoning] if reasoning else [""]
+                
+                # Add final prediction at the end of reasoning steps
+                if predicted_answer:
+                    reasoning_steps.append(f"Final Answer: {predicted_answer}")
+            else:
+                # Case 2: No tool selector/fixed tool - only add final answer
+                if predicted_answer:
+                    reasoning_steps = [f"Final Answer of this problem is {predicted_answer}"]
             scores = self.score_reasoning(problem, reasoning_steps, system_prompt)
             
             print("=" * 60)
@@ -179,40 +191,3 @@ class PRMSelector:
         
         return results
 
-
-def test_prm_selector():
-    
-    data = {
-        "system": "Please reason step by step, and put your final answer within \\boxed{}.",
-        "query": "Sue lives in a fun neighborhood. One weekend, the neighbors decided to play a prank on Sue. On Friday morning, the neighbors placed 18 pink plastic flamingos out on Sue's front yard. On Saturday morning, the neighbors took back one third of the flamingos, painted them white, and put these newly painted white flamingos back out on Sue's front yard. Then, on Sunday morning, they added another 18 pink plastic flamingos to the collection. At noon on Sunday, how many more pink plastic flamingos were out than white plastic flamingos?",
-        "response": [
-            "To find out how many more pink plastic flamingos were out than white plastic flamingos at noon on Sunday, we can break down the problem into steps. First, on Friday, the neighbors start with 18 pink plastic flamingos.",
-            "On Saturday, they take back one third of the flamingos. Since there were 18 flamingos, (1/3 × 18 = 6) flamingos are taken back. So, they have (18 - 6 = 12) flamingos left. Then, they paint these 6 flamingos white and put them back out. Now Sue has 12 pink flamingos and 6 white flamingos.",
-            "On Sunday, the neighbors add another 18 pink plastic flamingos. Sue now has 36 pink flamingos and 6 white flamingos.",
-            "Subtracting gives (36 - 6 = 30). The answer is \\boxed{30}."
-        ]
-    }
-    
-    selector = PRMSelector()
-    
-    scores = selector.score_reasoning(
-        problem=data["query"],
-        reasoning_steps=data["response"],
-        system_prompt=data["system"]
-    )
-    
-    print("\n" + "=" * 60)
-    print("PRM Scoring Test Results")
-    print("=" * 60)
-    print(f"Step rewards: {scores['step_rewards']}")
-    print(f"Mean reward: {scores['mean_reward']:.4f}")
-    print(f"Min reward: {scores['min_reward']:.4f}")
-    print(f"Final reward: {scores['final_reward']:.4f}")
-    print(f"Number of steps: {scores['num_steps']}")
-    print("=" * 60)
-    
-    return scores
-
-
-if __name__ == "__main__":
-    test_prm_selector()

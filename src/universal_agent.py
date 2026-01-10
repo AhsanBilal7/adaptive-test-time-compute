@@ -15,7 +15,17 @@ from src.help_functions.tools import NumericVerifier, VerifierTool, SummarizerTo
 
 
 def get_field_from_completion(completion_text, field, default=None):
-    data = json.loads(completion_text)
+    print(completion_text)
+    try:
+        data = json.loads(completion_text)
+    except json.JSONDecodeError:
+        # Try to extract the answer field directly if JSON parsing fails
+        match = re.search(r'"answer"\s*:\s*"([^"]*(?:\\.[^"]*)*)"', completion_text)
+        if match and field == "answer":
+            # Unescape the captured content
+            return match.group(1).encode().decode('unicode_escape')
+        return default
+    
     current = data
     for part in field.split("."):
         if isinstance(current, dict) and part in current:
@@ -23,6 +33,17 @@ def get_field_from_completion(completion_text, field, default=None):
         else:
             return default
     return current
+
+# def get_field_from_completion(completion_text, field, default=None):
+#     print(completion_text)
+#     data = json.loads(completion_text)
+#     current = data
+#     for part in field.split("."):
+#         if isinstance(current, dict) and part in current:
+#             current = current[part]
+#         else:
+#             return default
+#     return current
 
 
 def _get(obj, key, default=None):
@@ -261,6 +282,10 @@ class UniversalAgent:
         unstructured_response = self.client.generate(unstructured_messages)
         final_answer_unstructured = unstructured_response.completion if hasattr(unstructured_response, "completion") else str(unstructured_response)
         
+        # print("="*80)
+        # print("Unstructured Final Answer Response:", final_answer_unstructured)
+        # print("Structured Final Answer Response:", final_answer_structured)
+        # print("="*80)
         metadata = {
             "tool": "direct",
             "compute_strategy": "direct",
@@ -317,6 +342,10 @@ class UniversalAgent:
         
         self.compute_configs_used.append(compute_config)
         
+        print("*"*80)
+        print("Using the fixed tool and compute config:", tool_name, compute_config)
+        print("*"*80)
+
         if compute_config["param"] == 1:
             action, reasoning = reasoner.generate_action(messages, instruction_prompt)
             metadata = {
