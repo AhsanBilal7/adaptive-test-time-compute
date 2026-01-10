@@ -19,7 +19,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config",
         type=str,
-        default="./config.yaml",
+        default="./main_trajectory_config.yaml",
         help="Path to config file"
     )
     args = parser.parse_args()
@@ -52,8 +52,8 @@ if __name__ == "__main__":
         client_factory=client_factory,
         prompts=prompts,
         output_dir="./training_data_temp",
-        max_train_problems=1,
-        max_dev_problems=100,
+        max_train_problems=2500,
+        max_dev_problems=400,
         k_rollouts=10,
         num_epochs=10,
         batch_size=32
