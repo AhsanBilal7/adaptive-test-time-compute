@@ -395,6 +395,7 @@ class OllamaWrapper(LLMClientWrapper):
         """Build options dict for native Ollama API."""
         opts = {
             "temperature": self.client_kwargs.get("temperature", 0.7),
+            "top_k": self.client_kwargs.get("top_k", 0.9),
             "num_ctx": self.client_kwargs.get("max_tokens", 1024)
         }
         
@@ -1068,7 +1069,7 @@ class TrainedModelWrapper(LLMClientWrapper):
         Convert messages to the format expected by the trained model.
 
         Args:
-            messages (list): A list of message objects with 'role' and 'content' attributes.
+            messages (list): A list of message objects or dictionaries with 'role' and 'content'.
 
         Returns:
             str: Formatted prompt string for the model.
@@ -1077,8 +1078,13 @@ class TrainedModelWrapper(LLMClientWrapper):
         prompt_parts = []
         
         for msg in messages:
-            role = msg.role
-            content = msg.content
+            # Handle both dictionary and object formats
+            if isinstance(msg, dict):
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+            else:
+                role = getattr(msg, "role", "user")
+                content = getattr(msg, "content", "")
             
             # Map roles to chat template format
             if role == "system":
@@ -1102,7 +1108,7 @@ class TrainedModelWrapper(LLMClientWrapper):
         Generate a response from the trained model given a list of messages.
 
         Args:
-            messages (list): A list of message objects.
+            messages (list): A list of message objects or dictionaries.
 
         Returns:
             LLMResponse: The response from the trained model.
@@ -1174,7 +1180,7 @@ class TrainedModelWrapper(LLMClientWrapper):
         Generate a structured JSON response from the trained model.
 
         Args:
-            messages (list): A list of message objects.
+            messages (list): A list of message objects or dictionaries.
             schema (dict): JSON schema defining the expected output structure.
 
         Returns:
@@ -1191,23 +1197,34 @@ class TrainedModelWrapper(LLMClientWrapper):
         
         # Create modified messages with schema instruction
         modified_messages = list(messages)
-        print(modified_messages[-1].keys())
-        if modified_messages and modified_messages[-1].role == "user":
-            # Create a new message object with updated content
+        
+        if modified_messages:
             last_msg = modified_messages[-1]
             
-            # Create a simple object with the required attributes
-            class ModifiedMessage:
-                def __init__(self, role, content, attachment=None):
-                    self.role = role
-                    self.content = content
-                    self.attachment = attachment
-            
-            modified_messages[-1] = ModifiedMessage(
-                role=last_msg.role,
-                content=last_msg.content + schema_instruction,
-                attachment=getattr(last_msg, 'attachment', None)
-            )
+            # Handle both dictionary and object formats
+            if isinstance(last_msg, dict):
+                if last_msg.get("role") == "user":
+                    # Create a new dictionary with updated content
+                    modified_messages[-1] = {
+                        "role": last_msg["role"],
+                        "content": last_msg["content"] + schema_instruction,
+                        "attachment": last_msg.get("attachment")
+                    }
+            else:
+                # Handle object format
+                if last_msg.role == "user":
+                    # Create a simple object with the required attributes
+                    class ModifiedMessage:
+                        def __init__(self, role, content, attachment=None):
+                            self.role = role
+                            self.content = content
+                            self.attachment = attachment
+                    
+                    modified_messages[-1] = ModifiedMessage(
+                        role=last_msg.role,
+                        content=last_msg.content + schema_instruction,
+                        attachment=getattr(last_msg, 'attachment', None)
+                    )
         
         prompt = self.convert_messages(modified_messages)
 
@@ -1264,6 +1281,7 @@ class TrainedModelWrapper(LLMClientWrapper):
 
         response_text, input_tokens, output_tokens = self.execute_with_retries(api_call)
 
+        print("Extracted structured response:", response_text)
         return LLMResponse(
             model_id=self.model_id,
             completion=response_text.strip(),
