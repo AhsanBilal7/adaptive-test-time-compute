@@ -82,7 +82,8 @@ class ControllerTrainingMain:
         )
         self.experiment_dir = self.output_dir / self.experiment_name
         self.experiment_dir.mkdir(parents=True, exist_ok=True)
-        
+        # self.experiment_dir =   Path("./models/controller_20260106_121859")
+
         # Save config to experiment directory
         with open(self.experiment_dir / 'config.yaml', 'w') as f:
             yaml.dump(self.config, f, default_flow_style=False)

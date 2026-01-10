@@ -1,0 +1,45 @@
+
+# ============================================================================
+# MODE 4: DYNAMIC (Full agent with planning, tool selection, compute selection)
+# ============================================================================
+agent:
+  mode: dynamic
+  use_planner: true
+  use_tool_selector: true
+  use_compute_selector: true
+  remember_cot: true
+  max_text_history: 16
+  max_image_history: 0
+  fixed_tool: null
+  fixed_compute: null
+  planning_frequency: null
+  domain: math
+
+eval:
+  num_workers: 16
+  output_dir: dynamic_trajectory
+  max_problems: null
+  num_iterations: 1
+
+  use_prm_selection: true  
+  prm_selection_metric: "mean_reward"  
+
+  split: test
+  problem_types: null
+  difficulty_levels: null
+
+client:
+  client_name: ollama
+  base_url: http://localhost:11434/v1
+  model_id: qwen2.5:7b-instruct
+  generate_kwargs:
+    temperature: 0.95
+    top_k: 0.95
+    max_tokens: 1024
+  timeout: 60
+  max_retries: 5
+  delay: 2
+  alternate_roles: false
+
+
+

@@ -1,6 +1,7 @@
 *__pycache__/
 test.json
 *.json
+*.jsonl
 *.csv
 *.out
 *.pid
