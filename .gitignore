@@ -6,6 +6,9 @@ test.json
 *.out
 *.pid
 *.toml
+*.txt
+configs_ablation/
+
 
 
 # Byte-compiled / optimized / DLL files
@@ -18,6 +21,7 @@ __pycache__/
 
 # Distribution / packaging
 .Python
+build/
 build/
 develop-eggs/
 dist/

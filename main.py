@@ -154,7 +154,10 @@ def evaluate_reasoning_agent(
             predicted_answer = extract_prediction_fn(response, problem_data)
             
             is_correct = check_answer_fn(predicted_answer, gold_answer)
-            
+            # print("••••••••••••••••••••••••••••••••••••••••••••••")
+            # print(f"Predicted (normalized): {predicted_answer}")
+            # print(f"Gold (normalized): {gold_answer}")
+            # print("••••••••••••••••••••••••••••••••••••••••••••••")
             reasoning_length = len(response.reasoning) if response.reasoning else 0
             word_count = len(response.reasoning.split()) if response.reasoning else 0
             
@@ -198,11 +201,14 @@ def evaluate_reasoning_agent(
         
         # Select best iteration using PRM or use last iteration
         if use_prm_selection and prm_selector:
+            
+            
             best_iteration_idx, best_iteration, all_prm_scores = prm_selector.select_best_iteration(
                 problem=problem,
                 iteration_results=iteration_results,
                 selection_metric=prm_selection_metric,
-                system_prompt="Please reason step by step, and put your final answer within \\boxed{}."
+                system_prompt="Please reason step by step, and put your final answer within \\boxed{}.",
+                meta_data=response.metadata
             )
             
             # Store PRM scores in pathway info
@@ -744,7 +750,7 @@ def main():
     parser.add_argument(
         "--config", 
         type=str, 
-        default="./config.yaml", 
+        default="./ablation_config.yaml", 
         help="Path to config file"
     )
     parser.add_argument(

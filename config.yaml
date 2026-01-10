@@ -1,6 +1,8 @@
 # Configuration for Math Agent Evaluation
 # Uncomment the desired mode section and comment out others
-
+# qwen2.5:7b-instruct
+# llama3.1:70b
+# llama3.1:8b-instruct
 # ============================================================================
 # MODE 1: DIRECT SOLVE (No tools, no compute strategies)
 # ============================================================================
@@ -19,8 +21,8 @@
 
 # eval:
 #   num_workers: 16
-#   output_dir: direct_results_test_with_prm
-#   num_iterations: 10
+#   output_dir: direct_results_test
+#   num_iterations: 1
 #   use_prm_selection: true  
 #   prm_selection_metric: "mean_reward"  
 
@@ -32,7 +34,7 @@
 # client:
 #   client_name: ollama
 #   base_url: http://localhost:11434/v1
-#   model_id: llama3.1:70b
+#   model_id: llama3.1:8b-instruct
 #   generate_kwargs:
 #     temperature: 0.95
 #     max_tokens: 1024
@@ -61,7 +63,7 @@
 # eval:
 #   num_workers: 16
 #   output_dir: fixed_tool_results
-#   max_problems: 120
+#   max_problems: null
 #   split: test
 #   problem_types: null
 #   difficulty_levels: null
@@ -69,7 +71,7 @@
 # client:
 #   client_name: ollama
 #   base_url: http://localhost:11434/v1
-#   model_id: llama3.1:70b
+#   model_id: llama3.1:8b-instruct
 #   generate_kwargs:
 #     temperature: 0.95
 #     max_tokens: 1024
@@ -134,7 +136,7 @@
 
 # eval:
 #   num_workers: 16
-#   output_dir: dynamic_results_testing_with_prm
+#   output_dir: dynamic_results_testing_with_prm_llama_8b
 #   max_problems: null
 #   num_iterations: 10
 
@@ -148,7 +150,7 @@
 # client:
 #   client_name: ollama
 #   base_url: http://localhost:11434/v1
-#   model_id: llama3.1:70b
+#   model_id: llama3.1:8b-instruct
 #   generate_kwargs:
 #     temperature: 0.95
 #     max_tokens: 1024
@@ -158,55 +160,98 @@
 #   alternate_roles: false
 
 
-
+# ===================================================
+# Custom Experiment
+# ===================================================
 # ============================================================================
-# MODE 5: Trained Model Evaluation
+# MODE 2: FIXED TOOL (Use specific tool without dynamic selection)
 # ============================================================================
 agent:
-  mode: direct
+  mode: fixed_tool_compute
   use_planner: false
   use_tool_selector: false
   use_compute_selector: false
   remember_cot: true
   max_text_history: 16
   max_image_history: 0
-  fixed_tool: null
-  fixed_compute: null
+  fixed_tool: cot  # Options: cot, self_reflection
+  fixed_compute:
+    strategy: lookahead  # Options: best_of_n, beam_search, lookahead
+    param: 1  # Number of samples/beams
   planning_frequency: null
   domain: math
 
 eval:
   num_workers: 16
-  output_dir: direct_results_test_with_prm_with_trained_model
-  num_iterations: 1
-  use_prm_selection: true  
-  prm_selection_metric: "mean_reward"  
-
+  output_dir: fixed_tool_compute_llama_cot_bestof_1_iteration_1
   max_problems: null
+  num_iterations: 1
   split: test
   problem_types: null
   difficulty_levels: null
 
 client:
-  client_name: trained_model
-  model_id: controller_v1  # Identifier for your model
-  model_path: ./models/controller_20260103_173829/grpo/final
-  
-  # Model loading options
-  load_in_4bit: true  # Use 4-bit quantization to save memory
-  torch_dtype: float16  # Options: float16, float32, bfloat16
-  device_map: auto  # Auto-distribute across GPUs, or specify "cuda:0", etc.
-  
-  # Generation parameters
+  client_name: ollama
+  base_url: http://localhost:11434/v1
+  model_id: llama3.1:8b-instruct
   generate_kwargs:
-    temperature: 0.7  # Lower for more deterministic (0.0-1.0)
-    max_tokens: 512  # Max tokens to generate
-    top_p: null  # Optional nucleus sampling (0.0-1.0)
-    top_k: null  # Optional top-k sampling
-  
-  # Retry configuration
+    temperature: 0.95
+    top_k: 0.95
+    max_tokens: 1024
+  timeout: 60
   max_retries: 5
   delay: 2
-  timeout: null  # Not used for local models
-  base_url: null  # Not used for local models
   alternate_roles: false
+
+
+# ============================================================================
+# MODE 5: Trained Model Evaluation
+# ============================================================================
+# agent:
+#   mode: dynamic
+#   use_planner: true
+#   use_tool_selector: true
+#   use_compute_selector: true
+#   remember_cot: true
+#   max_text_history: 16
+#   max_image_history: 0
+#   fixed_tool: null
+#   fixed_compute: null
+#   planning_frequency: null
+#   domain: math
+
+# eval:
+#   num_workers: 16
+#   output_dir: dynamic_results_test_with_prm_with_trained_model
+#   num_iterations: 1
+#   use_prm_selection: true  
+#   prm_selection_metric: "mean_reward"  
+
+#   max_problems: null
+#   split: test
+#   problem_types: null
+#   difficulty_levels: null
+
+# client:
+#   client_name: trained_model
+#   model_id: controller_v1  # Identifier for your model
+#   model_path: ./models/controller_20260106_125344/grpo/final
+  
+#   # Model loading options
+#   load_in_4bit: true  # Use 4-bit quantization to save memory
+#   torch_dtype: float16  # Options: float16, float32, bfloat16
+#   device_map: auto  # Auto-distribute across GPUs, or specify "cuda:0", etc.
+  
+#   # Generation parameters
+#   generate_kwargs:
+#     temperature: 0.7  # Lower for more deterministic (0.0-1.0)
+#     max_tokens: 512  # Max tokens to generate
+#     top_p: null  # Optional nucleus sampling (0.0-1.0)
+#     top_k: null  # Optional top-k sampling
+  
+#   # Retry configuration
+#   max_retries: 5
+#   delay: 2
+#   timeout: null  # Not used for local models
+#   base_url: null  # Not used for local models
+#   alternate_roles: false

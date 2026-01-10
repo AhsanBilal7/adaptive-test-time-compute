@@ -9,8 +9,48 @@ import seaborn as sns
 
 
 def load_pathway_data(pathway_file: str) -> List[Dict[str, Any]]:
+    """
+    Load pathway data from either pathway.json or results_final.json format.
+    Automatically detects and converts if needed.
+    """
     with open(pathway_file, 'r') as f:
         data = json.load(f)
+    
+    # Check if this is results_final.json format (has 'results' or 'statistics' keys)
+    if isinstance(data, dict) and ('results' in data or 'statistics' in data):
+        print("[INFO] Detected results_final.json format, converting to pathway format...")
+        results = data.get('results', [])
+        
+        pathway_data = []
+        for idx, result in enumerate(results):
+            metadata = result.get('metadata', {})
+            pathway_info = metadata.get('pathway', [])
+            
+            if not pathway_info:
+                # Create minimal pathway entry from available data
+                pathway_info = [{
+                    'iteration': 0,
+                    'tools_selected': metadata.get('tools_used', []),
+                    'compute_configs': metadata.get('compute_configs_used', []),
+                    'plan': result.get('plan', ''),
+                    'reasoning': result.get('reasoning', ''),
+                    'time_seconds': result.get('time_seconds', 0)
+                }]
+            
+            problem_pathway = {
+                'problem_id': result.get('problem_id', idx),
+                'problem_type': result.get('problem_type', 'unknown'),
+                'level': result.get('level', 'unknown'),
+                'is_correct': result.get('is_correct', False),
+                'iterations': pathway_info
+            }
+            
+            pathway_data.append(problem_pathway)
+        
+        print(f"[INFO] Converted {len(pathway_data)} problems from results format")
+        return pathway_data
+    
+    # Assume it's already in pathway format
     return data
 
 
@@ -155,6 +195,177 @@ def plot_tool_sequence_heatmap(pathway_data: List[Dict], output_dir: Path):
     ax.invert_yaxis()
     plt.tight_layout()
     plt.savefig(output_dir / 'tool_sequence_patterns.png', dpi=300, bbox_inches='tight')
+    plt.close()
+
+
+def plot_average_trajectory(pathway_data: List[Dict], output_dir: Path):
+    """Plot the average trajectory across all problems"""
+    if not pathway_data:
+        return
+    
+    # Collect data by iteration number across all problems
+    iteration_tool_counts = defaultdict(lambda: defaultdict(int))
+    iteration_strategy_counts = defaultdict(lambda: defaultdict(int))
+    iteration_params = defaultdict(list)
+    iteration_totals = defaultdict(int)
+    
+    for problem in pathway_data:
+        for iteration in problem["iterations"]:
+            iter_num = iteration["iteration"]
+            iteration_totals[iter_num] += 1
+            
+            # Count tools
+            tools = iteration["tools_selected"]
+            tools_str = ', '.join(sorted(tools)) if tools else 'none'
+            iteration_tool_counts[iter_num][tools_str] += 1
+            
+            # Count strategies and params
+            for config in iteration["compute_configs"]:
+                strategy = config.get("strategy", "none")
+                param = config.get("param", 0)
+                iteration_strategy_counts[iter_num][strategy] += 1
+                iteration_params[iter_num].append(param)
+    
+    iterations = sorted(iteration_totals.keys())
+    
+    # Get most common tool combination per iteration
+    most_common_tools = []
+    tool_percentages = []
+    for iter_num in iterations:
+        tool_counts = iteration_tool_counts[iter_num]
+        if tool_counts:
+            most_common = max(tool_counts.items(), key=lambda x: x[1])
+            most_common_tools.append(most_common[0])
+            tool_percentages.append((most_common[1] / iteration_totals[iter_num]) * 100)
+        else:
+            most_common_tools.append('none')
+            tool_percentages.append(0)
+    
+    # Get most common strategy per iteration
+    most_common_strategies = []
+    strategy_percentages = []
+    for iter_num in iterations:
+        strat_counts = iteration_strategy_counts[iter_num]
+        if strat_counts:
+            most_common = max(strat_counts.items(), key=lambda x: x[1])
+            most_common_strategies.append(most_common[0])
+            strategy_percentages.append((most_common[1] / iteration_totals[iter_num]) * 100)
+        else:
+            most_common_strategies.append('none')
+            strategy_percentages.append(0)
+    
+    # Average parameters per iteration
+    avg_params = [np.mean(iteration_params[i]) if iteration_params[i] else 0 for i in iterations]
+    std_params = [np.std(iteration_params[i]) if iteration_params[i] else 0 for i in iterations]
+    
+    # Create the plot
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 14))
+    
+    # Plot 1: Most common tool combination per iteration
+    unique_tools = list(set(most_common_tools))
+    tool_to_num = {tool: i for i, tool in enumerate(unique_tools)}
+    tool_nums = [tool_to_num[t] for t in most_common_tools]
+    
+    ax1.plot(iterations, tool_nums, marker='o', linewidth=2.5, markersize=9, color='#E63946', label='Most Common')
+    ax1.set_yticks(range(len(unique_tools)))
+    ax1.set_yticklabels(unique_tools, fontsize=9)
+    ax1.set_xlabel('Iteration Number', fontsize=12)
+    ax1.set_ylabel('Tool Selection', fontsize=12)
+    ax1.set_title('Average Tool Selection Trajectory (Most Common per Iteration)', fontsize=14, fontweight='bold')
+    ax1.grid(True, alpha=0.3, axis='x')
+    
+    # Add percentage annotations
+    for i, (iter_num, pct) in enumerate(zip(iterations, tool_percentages)):
+        ax1.annotate(f'{pct:.1f}%', (iter_num, tool_nums[i]), 
+                    textcoords="offset points", xytext=(0,10), 
+                    ha='center', fontsize=8, color='#E63946')
+    
+    # Plot 2: Most common strategy per iteration
+    unique_strats = list(set(most_common_strategies))
+    strat_to_num = {s: i for i, s in enumerate(unique_strats)}
+    strat_nums = [strat_to_num[s] for s in most_common_strategies]
+    
+    ax2.plot(iterations, strat_nums, marker='s', linewidth=2.5, markersize=9, color='#457B9D', label='Most Common')
+    ax2.set_yticks(range(len(unique_strats)))
+    ax2.set_yticklabels(unique_strats, fontsize=9)
+    ax2.set_xlabel('Iteration Number', fontsize=12)
+    ax2.set_ylabel('Compute Strategy', fontsize=12)
+    ax2.set_title('Average Compute Strategy Trajectory (Most Common per Iteration)', fontsize=14, fontweight='bold')
+    ax2.grid(True, alpha=0.3, axis='x')
+    
+    # Add percentage annotations
+    for i, (iter_num, pct) in enumerate(zip(iterations, strategy_percentages)):
+        ax2.annotate(f'{pct:.1f}%', (iter_num, strat_nums[i]), 
+                    textcoords="offset points", xytext=(0,10), 
+                    ha='center', fontsize=8, color='#457B9D')
+    
+    # Plot 3: Average compute parameters
+    ax3.plot(iterations, avg_params, marker='^', linewidth=2.5, markersize=9, color='#F1A208', label='Mean')
+    ax3.fill_between(iterations, 
+                     np.array(avg_params) - np.array(std_params),
+                     np.array(avg_params) + np.array(std_params),
+                     alpha=0.3, color='#F1A208', label='±1 Std Dev')
+    ax3.set_xlabel('Iteration Number', fontsize=12)
+    ax3.set_ylabel('Compute Parameter Value', fontsize=12)
+    ax3.set_title('Average Compute Parameter Trajectory', fontsize=14, fontweight='bold')
+    ax3.grid(True, alpha=0.3)
+    ax3.legend(loc='best', fontsize=10)
+    
+    plt.tight_layout()
+    plt.savefig(output_dir / 'average_trajectory.png', dpi=300)
+    plt.close()
+    
+    # Also create a comprehensive heatmap showing distribution across iterations
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 12))
+    
+    # Tool distribution heatmap
+    all_tool_combos = set()
+    for iter_data in iteration_tool_counts.values():
+        all_tool_combos.update(iter_data.keys())
+    all_tool_combos = sorted(all_tool_combos)
+    
+    tool_matrix = np.zeros((len(iterations), len(all_tool_combos)))
+    for i, iter_num in enumerate(iterations):
+        for j, tool_combo in enumerate(all_tool_combos):
+            count = iteration_tool_counts[iter_num].get(tool_combo, 0)
+            tool_matrix[i, j] = (count / iteration_totals[iter_num]) * 100 if iteration_totals[iter_num] > 0 else 0
+    
+    im1 = ax1.imshow(tool_matrix.T, cmap='YlOrRd', aspect='auto', interpolation='nearest')
+    ax1.set_xticks(range(len(iterations)))
+    ax1.set_xticklabels(iterations)
+    ax1.set_yticks(range(len(all_tool_combos)))
+    ax1.set_yticklabels(all_tool_combos, fontsize=8)
+    ax1.set_xlabel('Iteration Number', fontsize=12)
+    ax1.set_ylabel('Tool Combination', fontsize=12)
+    ax1.set_title('Tool Selection Distribution Across Iterations (% of problems)', fontsize=14, fontweight='bold')
+    cbar1 = plt.colorbar(im1, ax=ax1)
+    cbar1.set_label('Percentage (%)', fontsize=11)
+    
+    # Strategy distribution heatmap
+    all_strategies = set()
+    for iter_data in iteration_strategy_counts.values():
+        all_strategies.update(iter_data.keys())
+    all_strategies = sorted(all_strategies)
+    
+    strategy_matrix = np.zeros((len(iterations), len(all_strategies)))
+    for i, iter_num in enumerate(iterations):
+        for j, strategy in enumerate(all_strategies):
+            count = iteration_strategy_counts[iter_num].get(strategy, 0)
+            strategy_matrix[i, j] = (count / iteration_totals[iter_num]) * 100 if iteration_totals[iter_num] > 0 else 0
+    
+    im2 = ax2.imshow(strategy_matrix.T, cmap='Blues', aspect='auto', interpolation='nearest')
+    ax2.set_xticks(range(len(iterations)))
+    ax2.set_xticklabels(iterations)
+    ax2.set_yticks(range(len(all_strategies)))
+    ax2.set_yticklabels(all_strategies, fontsize=9)
+    ax2.set_xlabel('Iteration Number', fontsize=12)
+    ax2.set_ylabel('Compute Strategy', fontsize=12)
+    ax2.set_title('Compute Strategy Distribution Across Iterations (% of problems)', fontsize=14, fontweight='bold')
+    cbar2 = plt.colorbar(im2, ax=ax2)
+    cbar2.set_label('Percentage (%)', fontsize=11)
+    
+    plt.tight_layout()
+    plt.savefig(output_dir / 'trajectory_distribution_heatmap.png', dpi=300)
     plt.close()
 
 
@@ -472,6 +683,9 @@ def visualize_trajectories(pathway_file: str, output_dir: str, num_sample_proble
     print("  - Problem type-tool correlation...")
     plot_problem_type_tool_correlation(pathway_data, output_path)
     
+    print("  - Average trajectory across all problems...")
+    plot_average_trajectory(pathway_data, output_path)
+    
     print(f"\n  - Individual problem trajectories (sampling {num_sample_problems} problems)...")
     num_problems = len(pathway_data)
     sample_indices = np.linspace(0, num_problems - 1, min(num_sample_problems, num_problems), dtype=int)
@@ -492,8 +706,8 @@ def main():
     parser.add_argument(
         "--pathway_file",
         type=str,
-        default="./dynamic_results_testing_with_prm/math_mode-dynamic_planner-True_toolsel-True_computesel-True_pathway.json",
-        help="Path to the pathway JSON file"
+        default="./all_saved_results/llama3.1_8b_instruct/dynamic_results/math_mode-dynamic_planner-True_toolsel-True_computesel-True_pathway.json",
+        help="Path to the pathway JSON file or results_final.json file"
     )
     parser.add_argument(
         "--output_dir",
