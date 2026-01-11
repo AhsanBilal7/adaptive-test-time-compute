@@ -181,3 +181,4 @@ cython_debug/
 tw-games.zip
 /records
 /records.zip
+training_data/rollouts_train.jsonl
