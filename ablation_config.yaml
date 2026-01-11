@@ -21,7 +21,7 @@ agent:
 
 eval:
   num_workers: 16
-  output_dir: fixed_tool_compute_llama_cot_bestof_1_iteration__1
+  output_dir: fixed_tool_compute_qwen_cot_bestof_1_iteration__1
   max_problems: null
   num_iterations: 1
 
@@ -35,7 +35,7 @@ eval:
 client:
   client_name: ollama
   base_url: http://localhost:11434/v1
-  model_id: llama3.1:8b-instruct
+  model_id: qwen2.5:7b-instruct
   generate_kwargs:
     temperature: 0.95
     top_k: 0.95

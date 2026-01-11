@@ -10,21 +10,21 @@ Dataset Statistics:
 --------------------------------------------------------------------------------
 Tool Usage Statistics:
 --------------------------------------------------------------------------------
-  cot                      :   9658 times (38.53%)
-  numeric_verifier         :   7062 times (28.17%)
-  verifier                 :   3381 times (13.49%)
-  reframe                  :   2872 times (11.46%)
-  self_reflection          :    914 times ( 3.65%)
-  web_search               :    873 times ( 3.48%)
-  summarizer               :    305 times ( 1.22%)
+  cot                      :   9690 times (38.82%)
+  numeric_verifier         :   7082 times (28.37%)
+  verifier                 :   3371 times (13.51%)
+  reframe                  :   2892 times (11.59%)
+  self_reflection          :    867 times ( 3.47%)
+  web_search               :    821 times ( 3.29%)
+  summarizer               :    237 times ( 0.95%)
 
 --------------------------------------------------------------------------------
 Compute Strategy Statistics:
 --------------------------------------------------------------------------------
-  direct                   :  14493 times (57.82%)
-  best_of_n                :   9585 times (38.24%)
-  beam_search              :    985 times ( 3.93%)
-  lookahead                :      2 times ( 0.01%)
+  direct                   :  14403 times (57.70%)
+  best_of_n                :   9536 times (38.21%)
+  beam_search              :   1018 times ( 4.08%)
+  lookahead                :      3 times ( 0.01%)
 
 --------------------------------------------------------------------------------
 Compute Parameter Statistics:
@@ -38,16 +38,16 @@ Compute Parameter Statistics:
 --------------------------------------------------------------------------------
 Timing Statistics:
 --------------------------------------------------------------------------------
-  Mean Iteration Time: 9.34 seconds
-  Median Iteration Time: 5.03 seconds
-  Min Iteration Time: 1.40 seconds
-  Max Iteration Time: 135.29 seconds
-  Total Time: 93419.85 seconds
+  Mean Iteration Time: 9.31 seconds
+  Median Iteration Time: 5.07 seconds
+  Min Iteration Time: 0.82 seconds
+  Max Iteration Time: 131.47 seconds
+  Total Time: 93099.86 seconds
 
 --------------------------------------------------------------------------------
 Planning Statistics:
 --------------------------------------------------------------------------------
-  Iterations with Plan: 9951 (99.51%)
-  Iterations without Plan: 49 (0.49%)
+  Iterations with Plan: 9954 (99.54%)
+  Iterations without Plan: 46 (0.46%)
 
 ================================================================================
