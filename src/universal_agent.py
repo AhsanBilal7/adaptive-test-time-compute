@@ -268,13 +268,11 @@ class UniversalAgent:
         final_answer_structured = get_field_from_completion(structured_response.completion, "answer")
         
         unstructured_messages = [
-            {"role": "system", "content": prompts["unstructured_final_answer_system_prompt"]},
+            {"role": "system", "content": prompts["direct_unstructured_final_answer_system_prompt"]},
             {
                 "role": "user",
-                "content": prompts["unstructured_final_answer_user_prompt"].format(
+                "content": prompts["direct_unstructured_final_answer_user_prompt"].format(
                     problem=problem,
-                    plan="No plan was created.",
-                    full_reasoning="Direct solution approach used."
                 )
             }
         ]
@@ -282,10 +280,11 @@ class UniversalAgent:
         unstructured_response = self.client.generate(unstructured_messages)
         final_answer_unstructured = unstructured_response.completion if hasattr(unstructured_response, "completion") else str(unstructured_response)
         
-        # print("="*80)
-        # print("Unstructured Final Answer Response:", final_answer_unstructured)
-        # print("Structured Final Answer Response:", final_answer_structured)
-        # print("="*80)
+        # print("*"*80)
+        # print("Messages for Direct Solve:", unstructured_messages)
+        # print("Direct Unstructured Final Answer Response:", final_answer_unstructured)
+        # print("*"*80)
+
         metadata = {
             "tool": "direct",
             "compute_strategy": "direct",

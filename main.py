@@ -6,6 +6,7 @@ from omegaconf import DictConfig
 from BALROG.balrog.client import create_llm_client
 from src.help_functions.prompts_templates import *
 
+from src.Evaluator import get_evaluator
 from src.universal_agent import UniversalAgent
 from src.math_core import MATHCore
 from src.gsm8k_core import GSM8KCore
@@ -38,6 +39,7 @@ def evaluate_reasoning_agent(
     use_prm_selection: bool = True,
     prm_selection_metric: str = "mean_reward",
     verbose: bool = True,
+    dataset_name: str = "MATH"
 ):
     """
     Evaluate a reasoning agent on a dataset with PRM-based iteration selection.
@@ -66,6 +68,7 @@ def evaluate_reasoning_agent(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
+    evaluator = get_evaluator(dataset_name.upper())
     agent = agent_factory()
     
     # Initialize PRM selector if enabled
@@ -151,13 +154,22 @@ def evaluate_reasoning_agent(
             response = agent.solve(problem, **prompt_kwargs)
             iteration_time = time.time() - iteration_start
             
-            predicted_answer = extract_prediction_fn(response, problem_data)
-            
-            is_correct = check_answer_fn(predicted_answer, gold_answer)
-            # print("••••••••••••••••••••••••••••••••••••••••••••••")
-            # print(f"Predicted (normalized): {predicted_answer}")
-            # print(f"Gold (normalized): {gold_answer}")
-            # print("••••••••••••••••••••••••••••••••••••••••••••••")
+            #TODO ADDED THE EVALUATOR FROM SATORI
+            # predicted_answer = extract_prediction_fn(response, problem_data)
+            # is_correct = check_answer_fn(predicted_answer, gold_answer)
+
+
+            predicted_answer = evaluator._extract_answer_from_model_completion(response.answer_unstructured)
+            # gold_answer = evaluator._extract_answer_from_gold_solution(gold_answer)
+            is_correct = evaluator._check_answers_equiv(predicted_answer, gold_answer)
+
+            print("••••••••••••••••••••••••••••••••••••••••••••••")
+            print(f"Question: {problem}")
+            print(f"Answer: {response.answer_unstructured}")
+            print(f"Predicted (normalized): {predicted_answer}")
+            print(f"Gold (normalized): {gold_answer}")
+            print(f"Is Correct: {is_correct}")
+            print("••••••••••••••••••••••••••••••••••••••••••••••")
             reasoning_length = len(response.reasoning) if response.reasoning else 0
             word_count = len(response.reasoning.split()) if response.reasoning else 0
             
@@ -180,6 +192,7 @@ def evaluate_reasoning_agent(
             iteration_result = {
                 "iteration": iteration + 1,
                 "predicted_answer": predicted_answer,
+                "answer_unstructured": response.answer_unstructured,
                 "reasoning": response.reasoning,
                 "reasoning_steps": response.reasoning_steps,  # Store individual steps
                 "reasoning_length": reasoning_length,
@@ -640,10 +653,12 @@ def get_prompts() -> Dict[str, str]:
         "prm_scoring_prompt": PRM_SCORING_PROMPT,
         "final_answer_system_prompt": FINAL_ANSWER_SYSTEM_PROMPT,
         "final_answer_user_prompt": FINAL_ANSWER_USER_PROMPT,
-        "unstructured_final_answer_system_prompt": UNSTRUCTURED_FINAL_ANSWER_SYSTEM_PROMPT,
-        "unstructured_final_answer_user_prompt": UNSTRUCTURED_FINAL_ANSWER_USER_PROMPT,
         "direct_solve_prompt": DIRECT_SOLVE_PROMPT,
         "direct_solve_system_prompt": DIRECT_SOLVE_SYSTEM_PROMPT,
+        "unstructured_final_answer_system_prompt": UNSTRUCTURED_FINAL_ANSWER_SYSTEM_PROMPT,
+        "unstructured_final_answer_user_prompt": UNSTRUCTURED_FINAL_ANSWER_USER_PROMPT,
+        "direct_unstructured_final_answer_system_prompt": DIRECT_UNSTRUCTURED_FINAL_ANSWER_SYSTEM_PROMPT,
+        "direct_unstructured_final_answer_user_prompt": DIRECT_UNSTRUCTURED_FINAL_ANSWER_USER_PROMPT,
     }
 
 
@@ -657,7 +672,8 @@ def evaluate_dataset(
     prompts = get_prompts()
     
     num_iterations = config["eval"].get("num_iterations", 20)
-    use_prm_selection = config["eval"].get("use_prm_selection", True)
+    use_prm_selection = config["eval"].get("use_prm_selection", False)
+    # print(f"🚧🚧🚧🚧🚧🚧🚧use_prm_selection: {use_prm_selection}")
     prm_selection_metric = config["eval"].get("prm_selection_metric", "mean_reward")
     
     if dataset_name.lower() == "math":
@@ -750,7 +766,7 @@ def main():
     parser.add_argument(
         "--config", 
         type=str, 
-        default="./ablation_config.yaml", 
+        default="./config.yaml", 
         help="Path to config file"
     )
     parser.add_argument(
@@ -784,11 +800,16 @@ def main():
     config = load_config(args.config)
     
     # Override config with command line arguments
-    if args.no_prm:
-        config["eval"]["use_prm_selection"] = False
-    else:
-        config["eval"]["use_prm_selection"] = True
+    # if args.no_prm:
+    #     config["eval"]["use_prm_selection"] = False
+    # else:
+    #     config["eval"]["use_prm_selection"] = True
     
+    if config["eval"]["num_iterations"] > 1:
+        config["eval"]["use_prm_selection"] = True
+    else:
+        config["eval"]["use_prm_selection"] = False
+        
     config["eval"]["prm_selection_metric"] = args.prm_metric
     
     print(f"\n{'='*70}")

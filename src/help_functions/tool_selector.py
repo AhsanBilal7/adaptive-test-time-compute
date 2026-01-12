@@ -32,27 +32,59 @@ class ToolSelector:
         msgs = [sys] + (history_messages[-3:] if history_messages else []) + [user]
         return msgs
     
+    # def _parse_and_validate(self, text):
+    #     obj = json.loads(text.strip())
+    #     print("ToolSelector raw output:", obj)
+    #     tools = obj.get("tools", [])
+        
+    #     if not tools and "tool" in obj:
+    #         tools = [obj["tool"]]
+        
+    #     if isinstance(tools, str):
+    #         tools = [tools]
+        
+    #     validated = [t for t in tools if t in _VALID_TOOLS]
+        
+    #     if not validated:
+    #         validated = list(_DEFAULT["tools"])
+        
+    #     return {"tools": validated}
+
     def _parse_and_validate(self, text):
         obj = json.loads(text.strip())
-        tools = obj.get("tools", [])
+        print("ToolSelector raw output:", obj)
         
-        if not tools and "tool" in obj:
-            tools = [obj["tool"]]
+        # Handle both list and dict responses
+        if isinstance(obj, list):
+            tools = obj
+        elif isinstance(obj, dict):
+            tools = obj.get("tools", [])
+            # Fallback to "tool" key if "tools" doesn't exist
+            if not tools and "tool" in obj:
+                tools = [obj["tool"]]
+        else:
+            tools = []
         
+        # Ensure tools is a list
         if isinstance(tools, str):
             tools = [tools]
         
+        # Validate against allowed tools
         validated = [t for t in tools if t in _VALID_TOOLS]
         
+        # Default fallback
         if not validated:
             validated = list(_DEFAULT["tools"])
         
         return {"tools": validated}
-    
+        
     def select_tool(self, obs, plan, tool_selector_prompt, history_messages, schema, tool_selector_system_prompt):
         messages = self._build_prompt(obs, plan, history_messages or [], tool_selector_prompt, tool_selector_system_prompt)
         
         resp = self.client.generate_with_structured(messages, schema=schema)
+
+        print("🧩🧩🧩🧩🧩 ToolSelector raw response:", resp)
+
         text = resp.completion if hasattr(resp, "completion") else str(resp)
         selection = self._parse_and_validate(text)
         

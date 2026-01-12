@@ -7,6 +7,7 @@ import csv
 import os
 from collections import namedtuple
 from io import BytesIO
+from omegaconf import OmegaConf
 
 import google.generativeai as genai
 from anthropic import Anthropic
@@ -144,6 +145,369 @@ def process_image_claude(image):
     }
 
 
+class TransformerWrapper(LLMClientWrapper):
+    """
+    Wrapper for Hugging Face transformer models with chat template support.
+    
+    Provides a unified interface for models like Qwen, Llama, Mistral, etc.
+    that use the standard transformers library with apply_chat_template.
+    """
+
+    def __init__(self, client_config):
+        """
+        Initialize the TransformerWrapper with the given configuration.
+
+        Args:
+            client_config: Configuration object containing client-specific settings.
+                Expected additional fields:
+                - model_id: Hugging Face model identifier (e.g., "Qwen/Qwen2.5-7B-Instruct")
+                - load_in_4bit: Whether to use 4-bit quantization (default: False)
+                - load_in_8bit: Whether to use 8-bit quantization (default: False)
+                - torch_dtype: Torch dtype for model (default: "auto")
+                - device_map: Device mapping strategy (default: "auto")
+                - trust_remote_code: Whether to trust remote code (default: True)
+        """
+        super().__init__(client_config)
+        self._initialized = False
+        
+        # Quantization settings
+        self.load_in_4bit = getattr(client_config, 'load_in_4bit', False)
+        self.load_in_8bit = getattr(client_config, 'load_in_8bit', False)
+        self.torch_dtype_str = getattr(client_config, 'torch_dtype', 'auto')
+        self.device_map = getattr(client_config, 'device_map', 'auto')
+        self.trust_remote_code = getattr(client_config, 'trust_remote_code', True)
+        
+        # Generation settings
+        self.add_generation_prompt = getattr(client_config, 'add_generation_prompt', True)
+
+    def _initialize_client(self):
+        """Initialize the transformer model and tokenizer if not already initialized."""
+        if not self._initialized:
+            import torch
+            from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+            
+            logger.info(f"Loading transformer model: {self.model_id}")
+            
+            # Convert string dtype to torch dtype
+            if self.torch_dtype_str == 'auto':
+                self.torch_dtype = 'auto'
+            else:
+                dtype_mapping = {
+                    'float16': torch.float16,
+                    'float32': torch.float32,
+                    'bfloat16': torch.bfloat16,
+                }
+                self.torch_dtype = dtype_mapping.get(self.torch_dtype_str, 'auto')
+            
+            # Load tokenizer
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                self.model_id,
+                trust_remote_code=self.trust_remote_code
+            )
+            
+            # Set pad token if not present
+            if self.tokenizer.pad_token is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
+                self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
+            
+            # Configure quantization if requested
+            quantization_config = None
+            model_kwargs = {
+                "device_map": self.device_map,
+                "trust_remote_code": self.trust_remote_code,
+            }
+            
+            if self.load_in_4bit:
+                quantization_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_compute_dtype=self.torch_dtype if self.torch_dtype != 'auto' else torch.float16,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_use_double_quant=True,
+                )
+                model_kwargs["quantization_config"] = quantization_config
+            elif self.load_in_8bit:
+                quantization_config = BitsAndBytesConfig(
+                    load_in_8bit=True,
+                )
+                model_kwargs["quantization_config"] = quantization_config
+            else:
+                # Only set torch_dtype if not using quantization
+                model_kwargs["torch_dtype"] = self.torch_dtype
+            
+            # Load model
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.model_id,
+                **model_kwargs
+            )
+            
+            self.model.eval()
+            self._initialized = True
+            logger.info(f"Successfully loaded transformer model: {self.model_id}")
+
+    def convert_messages(self, messages):
+        """
+        Convert messages to the format expected by the transformer model's chat template.
+
+        Args:
+            messages (list): A list of message objects or dictionaries with 'role' and 'content'.
+
+        Returns:
+            list: List of message dictionaries in OpenAI format for chat template.
+        """
+        converted_messages = []
+        
+        for msg in messages:
+            # Handle both dictionary and object formats
+            if isinstance(msg, dict):
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+            else:
+                role = getattr(msg, "role", "user")
+                content = getattr(msg, "content", "")
+            
+            # Standard OpenAI format that most chat templates support
+            converted_messages.append({
+                "role": role,
+                "content": content
+            })
+        
+        return converted_messages
+
+    def generate(self, messages):
+        """
+        Generate a response from the transformer model given a list of messages.
+
+        Args:
+            messages (list): A list of message objects or dictionaries.
+
+        Returns:
+            LLMResponse: The response from the transformer model.
+        """
+        self._initialize_client()
+        converted_messages = self.convert_messages(messages)
+
+        def api_call():
+            import torch
+            
+            # Apply chat template
+            inputs = self.tokenizer.apply_chat_template(
+                converted_messages,
+                add_generation_prompt=self.add_generation_prompt,
+                tokenize=True,
+                return_dict=True,
+                return_tensors="pt",
+            ).to(self.model.device)
+            
+            # Prepare generation kwargs
+            gen_kwargs = {
+                "max_new_tokens": self.client_kwargs.get("max_tokens", 512),
+                "pad_token_id": self.tokenizer.pad_token_id,
+                "eos_token_id": self.tokenizer.eos_token_id,
+            }
+            
+            # Add temperature if specified and not None
+            temperature = self.client_kwargs.get("temperature")
+            if temperature is not None and temperature > 0:
+                gen_kwargs["do_sample"] = True
+                gen_kwargs["temperature"] = temperature
+            else:
+                gen_kwargs["do_sample"] = False
+            
+            # Add other sampling parameters if present
+            if "top_p" in self.client_kwargs and self.client_kwargs["top_p"] is not None:
+                gen_kwargs["top_p"] = self.client_kwargs["top_p"]
+            if "top_k" in self.client_kwargs and self.client_kwargs["top_k"] is not None:
+                gen_kwargs["top_k"] = self.client_kwargs["top_k"]
+            
+
+            # Generate response
+            with torch.no_grad():
+                outputs = self.model.generate(
+                    **inputs,
+                    **gen_kwargs
+                )
+            
+            # Decode only the generated part (exclude input tokens)
+            input_length = inputs["input_ids"].shape[-1]
+            generated_ids = outputs[0][input_length:]
+            response_text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+            
+            # Calculate token counts
+            input_tokens = input_length
+            output_tokens = len(generated_ids)
+            
+            # print("*"*80)
+            # print(f"Message: {messages}")
+            # print(f"response_text: {response_text}")
+            # print("*"*80)
+            return response_text, input_tokens, output_tokens
+
+        response_text, input_tokens, output_tokens = self.execute_with_retries(api_call)
+
+
+        return LLMResponse(
+            model_id=self.model_id,
+            completion=response_text.strip(),
+            stop_reason="stop",
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            reasoning=None,
+        )
+
+    def generate_with_structured(self, messages, schema):
+        """
+        Generate a structured JSON response from the transformer model.
+
+        Args:
+            messages (list): A list of message objects or dictionaries.
+            schema (dict): JSON schema defining the expected output structure.
+
+        Returns:
+            LLMResponse: The response from the transformer model with JSON content.
+        """
+        self._initialize_client()
+        
+        # Add JSON schema instruction to the last message
+        schema_instruction = (
+            f"\n\nYou must respond with valid JSON matching this exact schema:\n"
+            f"```json\n{json.dumps(schema, indent=2)}\n```\n"
+            f"Respond ONLY with the JSON object, no additional text, explanations, or markdown formatting."
+        )
+        
+        # Create modified messages with schema instruction
+        modified_messages = []
+        for i, msg in enumerate(messages):
+            # Handle both dictionary and object formats
+            if isinstance(msg, dict):
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+            else:
+                role = getattr(msg, "role", "user")
+                content = getattr(msg, "content", "")
+            
+            # Add schema to last user message
+            if i == len(messages) - 1 and role == "user":
+                content = content + schema_instruction
+            
+            modified_messages.append({
+                "role": role,
+                "content": content
+            })
+
+        def api_call():
+            import torch
+            
+            # Apply chat template
+            inputs = self.tokenizer.apply_chat_template(
+                modified_messages,
+                add_generation_prompt=self.add_generation_prompt,
+                tokenize=True,
+                return_dict=True,
+                return_tensors="pt",
+            ).to(self.model.device)
+            
+            # Prepare generation kwargs
+            gen_kwargs = {
+                "max_new_tokens": self.client_kwargs.get("max_tokens", 512),
+                "pad_token_id": self.tokenizer.pad_token_id,
+                "eos_token_id": self.tokenizer.eos_token_id,
+            }
+            
+            # Add temperature if specified
+            temperature = self.client_kwargs.get("temperature")
+            if temperature is not None and temperature > 0:
+                gen_kwargs["do_sample"] = True
+                gen_kwargs["temperature"] = temperature
+            else:
+                gen_kwargs["do_sample"] = False
+            
+            # Add other sampling parameters
+            if "top_p" in self.client_kwargs and self.client_kwargs["top_p"] is not None:
+                gen_kwargs["top_p"] = self.client_kwargs["top_p"]
+            if "top_k" in self.client_kwargs and self.client_kwargs["top_k"] is not None:
+                gen_kwargs["top_k"] = self.client_kwargs["top_k"]
+            
+            # Generate response
+            with torch.no_grad():
+                outputs = self.model.generate(
+                    **inputs,
+                    **gen_kwargs
+                )
+            
+            # Decode only the generated part
+            input_length = inputs["input_ids"].shape[-1]
+            generated_ids = outputs[0][input_length:]
+            response_text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+            
+            # Calculate token counts
+            input_tokens = input_length
+            output_tokens = len(generated_ids)
+            
+            # Try to extract JSON from response
+            response_text = self._extract_json(response_text)
+            
+            return response_text, input_tokens, output_tokens
+
+        response_text, input_tokens, output_tokens = self.execute_with_retries(api_call)
+
+        return LLMResponse(
+            model_id=self.model_id,
+            completion=response_text.strip(),
+            stop_reason="stop",
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            reasoning=None,
+        )
+
+    def _extract_json(self, text: str) -> str:
+        """
+        Extract JSON object from text that may contain markdown code blocks or extra text.
+
+        Args:
+            text: Raw text that may contain JSON
+
+        Returns:
+            Extracted JSON string, or original text if no JSON found
+        """
+        import re
+        
+        # Try to find JSON in markdown code blocks first
+        json_block_pattern = r'```json\s*(.*?)\s*```'
+        matches = re.findall(json_block_pattern, text, re.DOTALL)
+        if matches:
+            return matches[0].strip()
+        
+        # Try generic code blocks
+        code_block_pattern = r'```\s*(.*?)\s*```'
+        matches = re.findall(code_block_pattern, text, re.DOTALL)
+        if matches:
+            for match in matches:
+                try:
+                    json.loads(match)
+                    return match.strip()
+                except json.JSONDecodeError:
+                    continue
+        
+        # Try to find raw JSON object
+        start_idx = text.find('{')
+        if start_idx != -1:
+            brace_count = 0
+            for i in range(start_idx, len(text)):
+                if text[i] == '{':
+                    brace_count += 1
+                elif text[i] == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        potential_json = text[start_idx:i+1]
+                        try:
+                            json.loads(potential_json)
+                            return potential_json
+                        except json.JSONDecodeError:
+                            pass
+        
+        # If no valid JSON found, return original text
+        return text
+
 class OpenAIWrapper(LLMClientWrapper):
     """Wrapper for interacting with the OpenAI API."""
 
@@ -181,9 +545,10 @@ class OpenAIWrapper(LLMClientWrapper):
         """
         converted_messages = []
         for msg in messages:
+            msg = OmegaConf.create(msg)
             new_content = [{"type": "text", "text": msg.content}]
-            if msg.attachment is not None:
-                new_content.append(process_image_openai(msg.attachment))
+            # if msg.attachment is not None:
+            #     new_content.append(process_image_openai(msg.attachment))
             if self.alternate_roles and converted_messages and converted_messages[-1]["role"] == msg.role:
                 converted_messages[-1]["content"].extend(new_content)
             else:
@@ -1358,7 +1723,10 @@ def create_llm_client(client_config):
 
     def client_factory():
         client_name_lower = client_config.client_name.lower()
-        if "ollama" in client_name_lower:
+        if "transformer" in client_name_lower or "huggingface" in client_name_lower or "hf" in client_name_lower:
+            # Use transformer wrapper for Hugging Face models
+            return TransformerWrapper(client_config)
+        elif "ollama" in client_name_lower:
             # Ollama has its own dedicated wrapper
             return OllamaWrapper(client_config)
         elif "openai" in client_name_lower or "vllm" in client_name_lower or "nvidia" in client_name_lower or "xai" in client_name_lower:

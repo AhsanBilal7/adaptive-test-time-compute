@@ -105,6 +105,27 @@ class PRMSelector:
             "num_steps": len(rewards)
         }
     
+
+
+    def combine_fields(self, entry):
+        plan = entry.get("plan", "")
+        reasoning_steps = entry.get("reasoning_steps", [])
+        tools_used = entry.get("tools_used", [])
+        compute_cfg = entry.get("compute_configs_used", [{}])[0]
+        strategy = compute_cfg.get("strategy", "")
+        param = compute_cfg.get("param", "")
+        answer_unstructured = entry.get("answer_unstructured", "")
+
+        combined = []
+        combined.append("### PLAN\n" + str(plan))
+        combined.append("\n### REASONING STEPS\n" + "\n".join(reasoning_steps))
+        combined.append("\n### TOOLS USED\n" + ", ".join(tools_used))
+        combined.append(f"\n### COMPUTE CONFIG\nStrategy: {strategy}, Param: {param}")
+        combined.append("\n### ORIGINAL UNSTRUCTURED ANSWER\n" + str(answer_unstructured))
+
+        combined_text = "\n".join(combined).strip()
+        return [combined_text]
+
     def select_best_iteration(
         self,
         problem: str,
@@ -119,30 +140,35 @@ class PRMSelector:
         print(f"[INFO] Scoring {len(iteration_results)} iterations with PRM...")
         
         for idx, iter_result in enumerate(iteration_results):
-            reasoning_steps = []
-            predicted_answer = iter_result.get("predicted_answer", "")
+            # reasoning_steps = []
+            # predicted_answer = iter_result.get("predicted_answer", "")
             
-            if meta_data and (meta_data.get("use_tool_selector") or meta_data.get("fixed_tool")):
-                # Case 1: Tool selector or fixed tool - add reasoning steps AND final answer
-                reasoning_steps = iter_result.get("reasoning_steps", [])
-                if not reasoning_steps:
-                    reasoning = iter_result.get("reasoning", "")
-                    reasoning_steps = [reasoning] if reasoning else [""]
+            # if meta_data and (meta_data.get("use_tool_selector") or meta_data.get("fixed_tool")):
+            #     # Case 1: Tool selector or fixed tool - add reasoning steps AND final answer
+            #     reasoning_steps = iter_result.get("reasoning_steps", [])
+            #     if not reasoning_steps:
+            #         reasoning = iter_result.get("reasoning", "")
+            #         reasoning_steps = [reasoning] if reasoning else [""]
                 
-                # Add final prediction at the end of reasoning steps
-                if predicted_answer:
-                    reasoning_steps.append(f"Final Answer: {predicted_answer}")
-            else:
-                # Case 2: No tool selector/fixed tool - only add final answer
-                if predicted_answer:
-                    reasoning_steps = [f"Final Answer of this problem is {predicted_answer}"]
-            scores = self.score_reasoning(problem, reasoning_steps, system_prompt)
+            #     # Add final prediction at the end of reasoning steps
+            #     if predicted_answer:
+            #         reasoning_steps.append(f"Final Answer: {predicted_answer}")
+            # else:
+            #     # Case 2: No tool selector/fixed tool - only add final answer
+            #     if predicted_answer:
+            #         reasoning_steps = [f"Final Answer of this problem is {predicted_answer}"]
             
-            print("=" * 60)
-            print(f"Problem: {problem}")
-            print(f"Reasoning Steps: {reasoning_steps}")
-            print(f" Score: {scores}")
-            print("=" * 60)
+            scoring_text = self.combine_fields(iter_result)
+            
+            # scores = self.score_reasoning(problem, reasoning_steps, system_prompt)
+            scores = self.score_reasoning(problem, scoring_text, system_prompt)
+            
+            # print("🎉=" * 60)
+            # print(f"Problem: {problem}")
+            # print(f"Iterated Results: {iter_result.keys()}")
+            # print(f"Reasoning Steps: {scoring_text}")
+            # print(f" Score: {scores}")
+            # print("🎉=" * 60)
 
             scores["iteration"] = idx + 1
             all_scores.append(scores)

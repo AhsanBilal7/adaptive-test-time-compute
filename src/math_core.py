@@ -6,7 +6,6 @@ from datasets import load_dataset
 import sympy
 from sympy.parsing.latex import parse_latex
 import logging
-
 from src.universal_agent import UniversalAgent, UniversalResponse
 
 eval_logger = logging.getLogger(__name__)
@@ -168,18 +167,31 @@ def is_equiv(x1: str, x2: str) -> bool:
         return False
 
 
+# def get_unnormalized_answer(text: str) -> str:
+#     INVALID_ANSWER = "[invalidanswer]"
+#     end_seq = "I hope it is correct."
+#     text += end_seq
+#     match = re.search(
+#         r"Final Answer: The final answer is(.*?)\. I hope it is correct\.",
+#         text,
+#     )
+#     if match:
+#         return match.group(1).strip()
+#     else:
+#         return INVALID_ANSWER
 def get_unnormalized_answer(text: str) -> str:
     INVALID_ANSWER = "[invalidanswer]"
-    end_seq = "I hope it is correct."
-    text += end_seq
-    match = re.search(
-        r"Final Answer: The final answer is(.*?)\. I hope it is correct\.",
-        text,
-    )
-    if match:
-        return match.group(1).strip()
-    else:
-        return INVALID_ANSWER
+
+    # Look for the final boxed answer:  \boxed{...}
+    match = re.findall(r"\\boxed\{([^}]*)\}", text)
+
+    # Valid only if exactly one boxed answer is found
+    if len(match) == 1:
+        return match[0].strip()
+
+    return INVALID_ANSWER
+
+
 
 
 def load_math_dataset(
@@ -260,7 +272,7 @@ def extract_math_prediction(response: UniversalResponse, problem_data: Dict) -> 
     predicted_answer = get_unnormalized_answer(response.answer_unstructured)
     
     if predicted_answer == "[invalidanswer]":
-        predicted_answer = str(response.answer)
+        predicted_answer = None
     
     return predicted_answer
 
