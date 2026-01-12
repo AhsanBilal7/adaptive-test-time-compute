@@ -205,55 +205,55 @@ def compute_and_save_metrics(results_json_path: str, model_config: Dict[str, Any
     
     return compute_metrics, output_path
 
-# if __name__ == "__main__":
-#     compute_and_save_metrics(
-#         # "./all_saved_results/qwen_2.5_7b/direct_results_test_with_prm/",
-#         "./all_saved_results/math_500/qwen_2.5_7b/direct_results_test",
-#         model_config={
-#             "model_parameters": 7e9,
-#             "context_length": 1024
-#         }
-#     )
-
 if __name__ == "__main__":
-    base = Path("./all_saved_results/gsm8k")
-
-    # TEMP: enumerate all subfolders and runs
-    for model_dir in base.iterdir():
-        if not model_dir.is_dir():
-            continue
-
-        model_name = model_dir.name.lower()
-
-        # 🔥 Infer model parameters from folder name
-        if "8b" in model_name or "8" in model_name:
-            model_params = 8e9
-        else:
-            model_params = 7e9
-
-        model_config = {
-            "model_parameters": model_params,
-            "context_length": 1024,
+    compute_and_save_metrics(
+        # "./all_saved_results/qwen_2.5_7b/direct_results_test_with_prm/",
+        "./dynamic_results_testing_with_prm_qwen2.5_10_iterations",
+        model_config={
+            "model_parameters": 8e9,
+            "context_length": 1024
         }
+    )
 
-        print(f"\n====================================")
-        print(f"[MODEL] {model_dir.name}")
-        print(f"  Using model_parameters = {model_params:.2e}")
-        print(f"====================================")
+# if __name__ == "__main__":
+#     base = Path("./all_saved_results/gsm8k")
 
-        # Loop over each run inside the model
-        for run_dir in model_dir.iterdir():
-            if not run_dir.is_dir():
-                continue
+#     # TEMP: enumerate all subfolders and runs
+#     for model_dir in base.iterdir():
+#         if not model_dir.is_dir():
+#             continue
 
-            print(f"\n[RUN] Processing {run_dir}")
+#         model_name = model_dir.name.lower()
 
-            metrics, output_path = compute_and_save_metrics(
-                str(run_dir),
-                model_config=model_config
-            )
+#         # 🔥 Infer model parameters from folder name
+#         if "8b" in model_name or "8" in model_name:
+#             model_params = 8e9
+#         else:
+#             model_params = 7e9
 
-            if metrics is None:
-                print(f"[SKIP] No results_final.json found in {run_dir}")
-            else:
-                print(f"[OK] Saved metrics to: {output_path}")
+#         model_config = {
+#             "model_parameters": model_params,
+#             "context_length": 1024,
+#         }
+
+#         print(f"\n====================================")
+#         print(f"[MODEL] {model_dir.name}")
+#         print(f"  Using model_parameters = {model_params:.2e}")
+#         print(f"====================================")
+
+#         # Loop over each run inside the model
+#         for run_dir in model_dir.iterdir():
+#             if not run_dir.is_dir():
+#                 continue
+
+#             print(f"\n[RUN] Processing {run_dir}")
+
+#             metrics, output_path = compute_and_save_metrics(
+#                 str(run_dir),
+#                 model_config=model_config
+#             )
+
+#             if metrics is None:
+#                 print(f"[SKIP] No results_final.json found in {run_dir}")
+#             else:
+#                 print(f"[OK] Saved metrics to: {output_path}")

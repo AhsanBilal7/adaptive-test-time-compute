@@ -3,6 +3,8 @@
 # qwen2.5:7b-instruct
 # llama3.1:70b
 # llama3.1:8b-instruct
+# meta-llama/Llama-3.1-8B-Instruct #transformer
+# Qwen/Qwen2.5-7B-Instruct #transformer
 # ============================================================================
 # MODE 1: DIRECT SOLVE (No tools, no compute strategies)
 # ============================================================================
@@ -21,22 +23,27 @@
 
 # eval:
 #   num_workers: 16
-#   output_dir: direct_results_test
+#   output_dir: direct_results_test_llama_8b_1_iteration
 #   num_iterations: 1
-#   use_prm_selection: true  
-#   prm_selection_metric: "mean_reward"  
+#   prm_selection_metric: null  
 
-#   max_problems: null
+#   max_problems: 100
 #   split: test
 #   problem_types: null
 #   difficulty_levels: null
 
 # client:
-#   client_name: ollama
-#   base_url: http://localhost:11434/v1
-#   model_id: llama3.1:8b-instruct
+#   # client_name: vllm
+#   # base_url: http://0.0.0.0:8080/v1
+#   # model_id: Qwen/Qwen2.5-VL-7B-Instruct
+#   # client_name: ollama
+#   # base_url: http://localhost4:11434/v1
+#   # model_id: qwen2.5:7b-instruct-fp16
+#   client_name: transformer
+#   base_url: http://localhost4:11434/v1
+#   model_id: meta-llama/Llama-3.1-8B-Instruct
 #   generate_kwargs:
-#     temperature: 0.95
+#     temperature: 0.3
 #     max_tokens: 1024
 #   timeout: 60
 #   max_retries: 5
@@ -119,7 +126,7 @@
 #   alternate_roles: false
 
 # ============================================================================
-# MODE 4: DYNAMIC (Full agent with planning, tool selection, compute selection)
+# MODE 5: DYNAMIC (Full agent with planning, tool selection, compute selection)
 # ============================================================================
 # agent:
 #   mode: dynamic
@@ -136,9 +143,9 @@
 
 # eval:
 #   num_workers: 16
-#   output_dir: dynamic_results_testing_with_prm_llama_8b
-#   max_problems: null
-#   num_iterations: 10
+#   output_dir: dynamic_results_testing_with_prm_llama_8b_1_iterations
+#   max_problems: 100
+#   num_iterations: 1
 
 #   use_prm_selection: true  
 #   prm_selection_metric: "mean_reward"  
@@ -148,16 +155,64 @@
 #   difficulty_levels: null
 
 # client:
-#   client_name: ollama
-#   base_url: http://localhost:11434/v1
-#   model_id: llama3.1:8b-instruct
+#   client_name: transformer
+#   base_url: http://localhost4:11434/v1
+#   model_id: meta-llama/Llama-3.1-8B-Instruct
+#   # client_name: ollama
+#   # base_url: http://localhost4:11434/v1
+#   # model_id: qwen2.5:7b-instruct
 #   generate_kwargs:
-#     temperature: 0.95
+#     temperature: 0.85
+#     top_k: 30
 #     max_tokens: 1024
 #   timeout: 60
 #   max_retries: 5
 #   delay: 2
 #   alternate_roles: false
+# # ============================================================================
+# # MODE 5: DYNAMIC-10 (Full agent with planning, tool selection, compute selection)
+# # ============================================================================
+agent:
+  mode: dynamic
+  use_planner: true
+  use_tool_selector: true
+  use_compute_selector: true
+  remember_cot: true
+  max_text_history: 16
+  max_image_history: 0
+  fixed_tool: null
+  fixed_compute: null
+  planning_frequency: null
+  domain: math
+
+eval:
+  num_workers: 16
+  output_dir: dynamic_results_testing_with_prm_llama_8b_10_iterations
+  max_problems: 100
+  num_iterations: 10
+
+  use_prm_selection: true  
+  prm_selection_metric: "mean_reward"  
+
+  split: test
+  problem_types: null
+  difficulty_levels: null
+
+client:
+  client_name: transformer
+  base_url: http://localhost4:11434/v1
+  model_id: meta-llama/Llama-3.1-8B-Instruct
+  # client_name: ollama
+  # base_url: http://localhost4:11434/v1
+  # model_id: qwen2.5:7b-instruct
+  generate_kwargs:
+    temperature: 0.3
+    top_k: 20
+    max_tokens: 1024
+  timeout: 60
+  max_retries: 5
+  delay: 2
+  alternate_roles: false
 
 
 # ===================================================
@@ -166,42 +221,42 @@
 # ============================================================================
 # MODE 2: FIXED TOOL (Use specific tool without dynamic selection)
 # ============================================================================
-agent:
-  mode: fixed_tool_compute
-  use_planner: false
-  use_tool_selector: false
-  use_compute_selector: false
-  remember_cot: true
-  max_text_history: 16
-  max_image_history: 0
-  fixed_tool: cot  # Options: cot, self_reflection
-  fixed_compute:
-    strategy: lookahead  # Options: best_of_n, beam_search, lookahead
-    param: 1  # Number of samples/beams
-  planning_frequency: null
-  domain: math
+# agent:
+#   mode: fixed_tool_compute
+#   use_planner: false
+#   use_tool_selector: false
+#   use_compute_selector: false
+#   remember_cot: true
+#   max_text_history: 16
+#   max_image_history: 0
+#   fixed_tool: cot  # Options: cot, self_reflection
+#   fixed_compute:
+#     strategy: lookahead  # Options: best_of_n, beam_search, lookahead
+#     param: 1  # Number of samples/beams
+#   planning_frequency: null
+#   domain: math
 
-eval:
-  num_workers: 16
-  output_dir: fixed_tool_compute_llama_cot_bestof_1_iteration_1
-  max_problems: null
-  num_iterations: 1
-  split: test
-  problem_types: null
-  difficulty_levels: null
+# eval:
+#   num_workers: 16
+#   output_dir: fixed_tool_compute_llama_cot_bestof_1_iteration_1
+#   max_problems: null
+#   num_iterations: 1
+#   split: test
+#   problem_types: null
+#   difficulty_levels: null
 
-client:
-  client_name: ollama
-  base_url: http://localhost:11434/v1
-  model_id: llama3.1:8b-instruct
-  generate_kwargs:
-    temperature: 0.95
-    top_k: 0.95
-    max_tokens: 1024
-  timeout: 60
-  max_retries: 5
-  delay: 2
-  alternate_roles: false
+# client:
+#   client_name: ollama
+#   base_url: http://localhost4:11434/v1
+#   model_id: qwen2.5:7b-instruct-fp16
+#   generate_kwargs:
+#     temperature: 0.95
+#     top_k: 0.95
+#     max_tokens: 1024
+#   timeout: 60
+#   max_retries: 5
+#   delay: 2
+#   alternate_roles: false
 
 
 # ============================================================================
