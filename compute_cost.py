@@ -1,79 +1,73 @@
 import json
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List
 
-def compute_average_compute_cost(results_json: Dict[str, Any], model_config: Dict[str, Any] = None) -> Dict[str, float]:
+
+def compute_average_compute_cost(
+    results_json: Dict[str, Any],
+    model_config: Optional[Dict[str, Any]] = None,
+    *,
+    K: float = 1e6,
+    token_multiplier: float = 1.5,
+) -> Dict[str, Any]:
     statistics = results_json.get("statistics", {})
     results = results_json.get("results", [])
-    
+
     total_problems = statistics.get("total_problems", len(results))
     num_iterations = statistics.get("num_iterations", 1)
     prm_enabled = statistics.get("prm_selection", {}).get("enabled", False)
-    
+
+    # ✅ ACCURACY comes from results_final.json (this file)
+    total_accuracy = statistics.get("accuracy", None)
+
     if total_problems == 0:
         return {
-            "avg_generations_per_problem": 0.0,
-            "avg_reasoning_tokens_per_problem": 0.0,
-            "avg_total_tokens_per_problem": 0.0,
-            "avg_compute_params_per_problem": 0.0,
-            "avg_tool_calls_per_problem": 0.0,
-            "avg_iterations_per_problem": 0.0,
-            "total_generations": 0,
-            "total_reasoning_tokens": 0,
-            "total_tool_calls": 0,
-            "total_iterations": 0,
+            "accuracy": total_accuracy,
             "compute_intensity_score": 0.0,
-            "model_normalized_compute": 0.0,
-            "theoretical_flops_per_problem": 0.0,
+            "theoretical_flops_per_problem": "0.0000e+00",
+            "prm_selection_used": prm_enabled,
         }
-    
+
     total_generations = 0
     total_reasoning_tokens = 0
     total_tool_calls = 0
-    total_iterations_computed = 0
-    
+
     print(f"\n[DEBUG] Processing {total_problems} problems...")
     print(f"[DEBUG] PRM Selection: {prm_enabled}")
     print(f"[DEBUG] Num iterations per problem: {num_iterations}")
-    
+
     for idx, result in enumerate(results):
         iterations = result.get("iterations", [])
-        
+
         if prm_enabled:
             selected_idx = result.get("selected_iteration_idx", len(iterations)) - 1
-            iterations_to_process = iterations[:selected_idx + 1]
+            iterations_to_process = iterations[: selected_idx + 1]
         else:
             iterations_to_process = iterations
-        
-        total_iterations_computed += len(iterations_to_process)
-        
+
         if idx == 0:
             print(f"\n[DEBUG] First problem sample:")
             print(f"  Total iterations available: {len(iterations)}")
             print(f"  Iterations to process: {len(iterations_to_process)}")
-        
+
         for iter_idx, iteration in enumerate(iterations_to_process):
             compute_configs = iteration.get("compute_configs_used", [])
             tools_used = iteration.get("tools_used", [])
             word_count = iteration.get("word_count", 0)
             reasoning_length = iteration.get("reasoning_length", 0)
             reasoning = iteration.get("reasoning", "")
-            
+
             if word_count == 0 and reasoning_length > 0:
                 word_count = reasoning_length // 5
-            
             if word_count == 0 and reasoning:
                 word_count = len(reasoning.split())
-            
             if word_count == 0:
                 predicted_answer = iteration.get("predicted_answer", "")
                 if predicted_answer:
                     word_count = len(predicted_answer.split())
-            
             if word_count == 0:
                 raise ValueError("Failed to compute word count for iteration")
-                # word_count = 50
-            
+
             if idx == 0 and iter_idx == 0:
                 print(f"\n[DEBUG] First iteration details:")
                 print(f"  compute_configs_used: {compute_configs}")
@@ -82,178 +76,166 @@ def compute_average_compute_cost(results_json: Dict[str, Any], model_config: Dic
                 print(f"  reasoning_length: {reasoning_length}")
                 print(f"  reasoning sample: {reasoning[:100]}")
                 print(f"  word_count (computed): {word_count}")
-            
+
             generations_this_iter = 0
-            if not compute_configs or len(compute_configs) == 0:
+            if not compute_configs:
                 generations_this_iter = 1
             else:
                 for config in compute_configs:
                     param = config.get("param", 1)
                     strategy = config.get("strategy", "none")
-                    
+
                     if strategy in ["best_of_n", "beam_search", "lookahead"]:
                         generations_this_iter += param
-                    elif strategy == "none" or strategy == "direct":
+                    elif strategy in ["none", "direct"]:
                         generations_this_iter += 1
                     else:
                         generations_this_iter += 1
-            
+
             total_generations += generations_this_iter
             total_reasoning_tokens += word_count
             total_tool_calls += len(tools_used)
-            
+
             if idx == 0 and iter_idx == 0:
                 print(f"  generations_this_iter: {generations_this_iter}")
-    
-    print(f"\n[DEBUG] Totals:")
-    print(f"  total_generations: {total_generations}")
-    print(f"  total_reasoning_tokens: {total_reasoning_tokens}")
-    print(f"  total_tool_calls: {total_tool_calls}")
-    print(f"  total_iterations_computed: {total_iterations_computed}")
-    
-    avg_generations = total_generations / total_problems if total_problems > 0 else 0
-    avg_reasoning_tokens = total_reasoning_tokens / total_problems if total_problems > 0 else 0
-    avg_total_tokens = avg_reasoning_tokens * 1.5
-    
-    compute_strategies = statistics.get("compute_strategies", {})
-    total_compute_params = compute_strategies.get("total_compute_params", 0)
-    total_all_iterations = total_problems * num_iterations
-    avg_compute_params = total_compute_params / total_all_iterations if total_all_iterations > 0 else 0
-    
-    avg_tool_calls = total_tool_calls / total_problems if total_problems > 0 else 0
-    avg_iterations = total_iterations_computed / total_problems if total_problems > 0 else 0
-    
-    # compute_intensity_score = (avg_generations * avg_reasoning_tokens * (1 + avg_tool_calls * 0.1)) / 1000
-    compute_intensity_score = (avg_generations * avg_reasoning_tokens * (1 + avg_tool_calls * 0.1)) / total_problems**2
+
+    avg_generations = total_generations / total_problems
+    avg_reasoning_tokens = total_reasoning_tokens / total_problems
+    avg_total_tokens = avg_reasoning_tokens * token_multiplier
+    avg_tool_calls = total_tool_calls / total_problems
+
+    compute_intensity_score = (avg_generations * avg_reasoning_tokens * (1 + avg_tool_calls * 0.1)) / K
     compute_intensity_score = float(f"{compute_intensity_score:.4e}")
 
-    print(f"\n[DEBUG] Averages:")
-    print(f"  avg_generations: {avg_generations}")
-    print(f"  avg_reasoning_tokens: {avg_reasoning_tokens}")
-    print(f"  avg_tool_calls: {avg_tool_calls}")
-    print(f"  compute_intensity_score: {compute_intensity_score}")
-    
-    model_normalized_compute = 0.0
     theoretical_flops_per_problem = 0.0
-    
     if model_config:
         model_params = model_config.get("model_parameters", 7e9)
         context_length = model_config.get("context_length", 2048)
-        
+
         tokens_per_forward = min(avg_total_tokens, context_length)
         flops_per_forward = 2 * model_params * tokens_per_forward
         theoretical_flops_per_problem = flops_per_forward * avg_generations
         theoretical_flops_per_problem = float(f"{theoretical_flops_per_problem:.4e}")
 
-        base_model_params = 7e9
-        model_normalized_compute = (model_params / base_model_params) * avg_generations * avg_total_tokens
-    
     return {
-        "avg_generations_per_problem": avg_generations,
-        "avg_reasoning_tokens_per_problem": avg_reasoning_tokens,
-        "avg_total_tokens_per_problem": avg_total_tokens,
-        "avg_compute_params_per_problem": avg_compute_params,
-        "avg_tool_calls_per_problem": avg_tool_calls,
-        "avg_iterations_per_problem": avg_iterations,
-        "total_generations": total_generations,
-        "total_reasoning_tokens": total_reasoning_tokens,
-        "total_tool_calls": total_tool_calls,
-        "total_iterations": total_iterations_computed,
+        "accuracy": total_accuracy,
         "compute_intensity_score": compute_intensity_score,
-        "model_normalized_compute": model_normalized_compute,
         "theoretical_flops_per_problem": f"{theoretical_flops_per_problem:.4e}",
         "prm_selection_used": prm_enabled,
     }
 
-def compute_and_save_metrics(results_json_path: str, model_config: Dict[str, Any] = None):
+
+def compute_and_save_metrics(results_json_path: str, model_config: Optional[Dict[str, Any]] = None):
     results_path = Path(results_json_path)
-    
+
+    # ✅ Always read accuracy from *_results_final.json (not pathway)
     if results_path.is_dir():
         json_files = list(results_path.glob("*_results_final.json"))
         if not json_files:
             print(f"No results_final.json files found in {results_path}")
-            return None, None
+            return None, None, None
         results_path = json_files[0]
         print(f"Found results file: {results_path}")
-    
-    with open(results_path, 'r') as f:
+
+    with open(results_path, "r") as f:
         results_json = json.load(f)
-    
+
     compute_metrics = compute_average_compute_cost(results_json, model_config)
-    
+
     output_path = results_path.parent / f"{results_path.stem}_compute_metrics.json"
-    
-    with open(output_path, 'w') as f:
+    with open(output_path, "w") as f:
         json.dump(compute_metrics, f, indent=2)
-    
+
     print(f"\n{'='*60}")
-    print(f"FINAL COMPUTE METRICS")
+    print("FINAL METRICS (ONLY)")
     print(f"{'='*60}")
-    print(f"  PRM Selection: {'Enabled' if compute_metrics.get('prm_selection_used') else 'Disabled'}")
-    print(f"  Compute Intensity Score (S_CI): {compute_metrics['compute_intensity_score']:.4f}")
-    print(f"  Avg Generations: {compute_metrics['avg_generations_per_problem']:.2f}")
-    print(f"  Avg Reasoning Tokens: {compute_metrics['avg_reasoning_tokens_per_problem']:.2f}")
-    print(f"  Avg Total Tokens: {compute_metrics['avg_total_tokens_per_problem']:.2f}")
-    print(f"  Avg Tool Calls: {compute_metrics['avg_tool_calls_per_problem']:.2f}")
-    print(f"  Avg Iterations Used: {compute_metrics['avg_iterations_per_problem']:.2f}")
-    print(f"  Avg Compute Params: {compute_metrics['avg_compute_params_per_problem']:.2f}")
-    if model_config:
-        print(f"  Theoretical FLOPs: {compute_metrics['theoretical_flops_per_problem']}")
-        print(f"  Model Normalized Compute: {compute_metrics['model_normalized_compute']:.2e}")
+    print(f"  Accuracy (from results_final): {compute_metrics.get('accuracy')}")
+    print(f"  Compute Intensity Score (S_CI): {compute_metrics['compute_intensity_score']:.4e}")
+    print(f"  Theoretical FLOPs / problem: {compute_metrics['theoretical_flops_per_problem']}")
     print(f"\nSaved to: {output_path}")
     print(f"{'='*60}\n")
-    
-    return compute_metrics, output_path
+
+    return compute_metrics, output_path, results_path.name
+
+
+def _print_summary_table(rows: List[Dict[str, Any]]) -> None:
+    if not rows:
+        print("\nNo runs produced metrics.\n")
+        return
+
+    headers = ["FILE", "ACCURACY", "COMPUTE_INTENSITY", "FLOPS_PER_PROBLEM"]
+    widths = {h: len(h) for h in headers}
+    for r in rows:
+        widths["FILE"] = max(widths["FILE"], len(str(r["file"])))
+        widths["ACCURACY"] = max(widths["ACCURACY"], len(str(r["accuracy"])))
+        widths["COMPUTE_INTENSITY"] = max(widths["COMPUTE_INTENSITY"], len(str(r["compute_intensity"])))
+        widths["FLOPS_PER_PROBLEM"] = max(widths["FLOPS_PER_PROBLEM"], len(str(r["flops"])))
+
+    def line(sep: str = "+", fill: str = "-") -> str:
+        return (
+            f"{sep}{fill * (widths['FILE'] + 2)}"
+            f"{sep}{fill * (widths['ACCURACY'] + 2)}"
+            f"{sep}{fill * (widths['COMPUTE_INTENSITY'] + 2)}"
+            f"{sep}{fill * (widths['FLOPS_PER_PROBLEM'] + 2)}{sep}"
+        )
+
+    def row(vals: List[str]) -> str:
+        return (
+            f"| {vals[0]:<{widths['FILE']}} "
+            f"| {vals[1]:<{widths['ACCURACY']}} "
+            f"| {vals[2]:<{widths['COMPUTE_INTENSITY']}} "
+            f"| {vals[3]:<{widths['FLOPS_PER_PROBLEM']}} |"
+        )
+
+    print("\nSUMMARY TABLE")
+    print(line())
+    print(row(headers))
+    print(line())
+    for r in rows:
+        print(
+            row(
+                [
+                    str(r["file"]),
+                    str(r["accuracy"]),
+                    str(r["compute_intensity"]),
+                    str(r["flops"]),
+                ]
+            )
+        )
+    print(line())
+    print()
+
 
 if __name__ == "__main__":
-    compute_and_save_metrics(
-        # "./all_saved_results/qwen_2.5_7b/direct_results_test_with_prm/",
-        "./dynamic_results_testing_with_prm_qwen2.5_10_iterations",
-        model_config={
-            "model_parameters": 8e9,
-            "context_length": 1024
-        }
-    )
+    parent_dir = Path("./result_ablation_qwen_MATH")
 
-# if __name__ == "__main__":
-#     base = Path("./all_saved_results/gsm8k")
+    model_config = {
+        "model_parameters": 7e9,
+        "context_length": 1024,
+    }
 
-#     # TEMP: enumerate all subfolders and runs
-#     for model_dir in base.iterdir():
-#         if not model_dir.is_dir():
-#             continue
+    summary_rows: List[Dict[str, Any]] = []
 
-#         model_name = model_dir.name.lower()
+    for run_dir in sorted(parent_dir.iterdir()):
+        if not run_dir.is_dir():
+            continue
 
-#         # 🔥 Infer model parameters from folder name
-#         if "8b" in model_name or "8" in model_name:
-#             model_params = 8e9
-#         else:
-#             model_params = 7e9
+        print(f"\n[RUN] Processing: {run_dir}")
+        metrics, out_path, results_file = compute_and_save_metrics(str(run_dir), model_config=model_config)
 
-#         model_config = {
-#             "model_parameters": model_params,
-#             "context_length": 1024,
-#         }
+        if metrics is None:
+            print(f"[SKIP] No *_results_final.json found in {run_dir}")
+            continue
 
-#         print(f"\n====================================")
-#         print(f"[MODEL] {model_dir.name}")
-#         print(f"  Using model_parameters = {model_params:.2e}")
-#         print(f"====================================")
+        summary_rows.append(
+            {
+                "file": str(run_dir),  # this is *_results_final.json filename
+                "accuracy": metrics.get("accuracy"),
+                "compute_intensity": f"{metrics['compute_intensity_score']:.4e}",
+                "flops": metrics["theoretical_flops_per_problem"],
+            }
+        )
 
-#         # Loop over each run inside the model
-#         for run_dir in model_dir.iterdir():
-#             if not run_dir.is_dir():
-#                 continue
+        print(f"[OK] Saved: {out_path}")
 
-#             print(f"\n[RUN] Processing {run_dir}")
-
-#             metrics, output_path = compute_and_save_metrics(
-#                 str(run_dir),
-#                 model_config=model_config
-#             )
-
-#             if metrics is None:
-#                 print(f"[SKIP] No results_final.json found in {run_dir}")
-#             else:
-#                 print(f"[OK] Saved metrics to: {output_path}")
+    _print_summary_table(summary_rows)
