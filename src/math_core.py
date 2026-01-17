@@ -193,6 +193,75 @@ def get_unnormalized_answer(text: str) -> str:
 
 
 
+def load_aime24_dataset(
+    split: str = "train",
+    problem_types: Optional[List[str]] = None,        # kept for API symmetry, ignored
+    difficulty_levels: Optional[List[str]] = None,    # kept for API symmetry, ignored
+    max_problems: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Loader for the AIME 2024 dataset: Maxwell-Jia/AIME_2024.
+
+    Returns a list of dicts with the same keys as load_math_dataset, so that the
+    rest of the evaluation pipeline (check_answer, extract_prediction, etc.)
+    can stay unchanged.
+    """
+    print("[INFO] Loading AIME 2024 dataset from Hugging Face (Maxwell-Jia/AIME_2024)")
+
+    split = "train"
+    ds = load_dataset("Maxwell-Jia/AIME_2024")
+    if split not in ds:
+        raise ValueError(f"Split '{split}' not found. Available splits: {list(ds.keys())}")
+
+    dataset = ds[split]
+    print(f"[INFO] Loaded {len(dataset)} AIME 2024 problems from {split} split")
+
+    if problem_types:
+        print("[WARN] problem_types filter ignored for AIME_2024 dataset")
+
+    if difficulty_levels:
+        print("[WARN] difficulty_levels filter ignored for AIME_2024 dataset")
+
+    if max_problems is not None:
+        dataset = dataset.select(range(min(max_problems, len(dataset))))
+        print(f"[INFO] Limited to {len(dataset)} AIME 2024 problems")
+
+    problems: List[Dict[str, Any]] = []
+    for idx in range(len(dataset)):
+        row = dataset[idx]
+
+        problem_id = idx
+        problem = row["Problem"]
+        solution = row["Solution"]
+        hf_answer = str(row["Answer"])   # Answer column is an int64
+
+        # Prefer the boxed answer in the solution, fall back to Answer field
+        boxed_answer = last_boxed_only_string(solution)
+        if boxed_answer:
+            gold_answer_extracted = remove_boxed(boxed_answer)
+        else:
+            gold_answer_extracted = hf_answer
+
+        gold_answer_normalized = normalize_final_answer(gold_answer_extracted)
+
+        problems.append(
+            {
+                "problem_id": problem_id,
+                "id": row["ID"],  # keep original AIME ID (e.g., "2024-I-1")
+                "problem": problem,
+                "gold_answer_raw": hf_answer,
+                "gold_answer_extracted": gold_answer_extracted,
+                "gold_answer_normalized": gold_answer_normalized,
+                "problem_type": "AIME_2024",
+                "level": None,  # AIME has no explicit level; keep key for schema compatibility
+                "solution": solution,
+            }
+        )
+
+    return problems
+
+
+
 
 def load_math_dataset(
     split: str = "train",
@@ -330,3 +399,26 @@ class MATHCore:
     
     def get_stats(self):
         return self.agent.get_stats()
+
+
+
+class AIME24Core(MATHCore):
+    """
+    Same interface as MATHCore, but backed by the AIME 2024 dataset.
+    Only the dataset loading is changed; everything else (check_answer,
+    extract_prediction, solve, reset, get_stats) is inherited.
+    """
+
+    @staticmethod
+    def load_dataset(
+        split: str = "train",
+        problem_types: Optional[List[str]] = None,
+        difficulty_levels: Optional[List[str]] = None,
+        max_problems: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        return load_aime24_dataset(
+            split=split,
+            problem_types=problem_types,
+            difficulty_levels=difficulty_levels,
+            max_problems=max_problems,
+        )

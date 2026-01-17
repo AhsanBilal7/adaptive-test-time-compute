@@ -8,7 +8,7 @@ from src.help_functions.prompts_templates import *
 
 from src.Evaluator import get_evaluator
 from src.universal_agent import UniversalAgent
-from src.math_core import MATHCore
+from src.math_core import MATHCore, AIME24Core
 from src.gsm8k_core import GSM8KCore
 from src.help_functions.prm_selector import PRMSelector
 import time
@@ -676,8 +676,11 @@ def evaluate_dataset(
     # print(f"🚧🚧🚧🚧🚧🚧🚧use_prm_selection: {use_prm_selection}")
     prm_selection_metric = config["eval"].get("prm_selection_metric", "mean_reward")
     
-    if dataset_name.lower() == "math":
-        core = MATHCore(agent, prompts)
+    if dataset_name.lower() == "math" or dataset_name.lower() == "aime24":
+        if dataset_name.lower() == "aime24":
+            core = AIME24Core(agent, prompts)
+        else:
+            core = MATHCore(agent, prompts)
         
         dataset = core.load_dataset(
             split=config["eval"]["split"],
@@ -733,6 +736,8 @@ def evaluate_dataset(
         fresh_agent = create_universal_agent(config)
         if dataset_name.lower() == "math":
             return MATHCore(fresh_agent, prompts)
+        elif dataset_name.lower() == "aime24":
+            return AIME24Core(fresh_agent, prompts)
         else:
             return GSM8KCore(fresh_agent, prompts)
     
@@ -773,7 +778,7 @@ def main():
         "--dataset",
         type=str,
         default="math",
-        choices=["math", "gsm8k"],
+        choices=["math", "gsm8k", "aime24"],
         help="Dataset to evaluate on (math or gsm8k)"
     )
     parser.add_argument(

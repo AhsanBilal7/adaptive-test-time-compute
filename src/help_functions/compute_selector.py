@@ -30,6 +30,7 @@ class ComputeSelector:
         return msgs
     
     def _parse_and_validate(self, text):
+        print(f"Compute selector raw output: {text.strip()}")
         obj = json.loads(text.strip())
         strategy = str(obj.get("strategy", _DEFAULT["strategy"])).strip()
         param_raw = obj.get("param", _DEFAULT["param"])

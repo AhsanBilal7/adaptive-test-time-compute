@@ -8,6 +8,10 @@ test.json
 *.toml
 *.txt
 configs_ablation/
+visualizations/
+configs_ablation_qwen_math/
+configs_ablation_qwen_AIME/
+configs_ablation_qwen/
 
 
 
