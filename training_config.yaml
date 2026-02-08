@@ -14,20 +14,21 @@ data:
 
 # Model Configuration
 model:
-  base_model: "meta-llama/Llama-3.2-3B-Instruct"
+  # base_model: "meta-llama/Llama-3.2-3B-Instruct"
   # Alternative models:
   # base_model: "meta-llama/Llama-3.1-8B-Instruct"
   # base_model: "mistralai/Mistral-7B-Instruct-v0.3"
-  # base_model: "Qwen/Qwen2.5-7B-Instruct"
+  base_model: "Qwen/Qwen2.5-7B-Instruct"
   
-  load_in_4bit: true
-  load_in_8bit: false
+  
+  load_in_4bit: false
+  load_in_8bit: true
 
 # LoRA Configuration
 lora:
   use_lora: true
-  r: 16
-  alpha: 32
+  r: 64
+  alpha: 128
   dropout: 0.05
   target_modules:
     - q_proj
@@ -44,7 +45,7 @@ sft:
   
   # Training hyperparameters
   num_epochs: 3
-  batch_size: 4
+  batch_size: 2
   gradient_accumulation_steps: 4
   learning_rate: 2.0e-4
   warmup_steps: 100
@@ -72,7 +73,7 @@ grpo:
   
   # Training hyperparameters
   num_epochs: 3
-  batch_size: 2
+  batch_size: 1
   gradient_accumulation_steps: 4
   learning_rate: 5.0e-5
   warmup_steps: 100
@@ -83,7 +84,7 @@ grpo:
   # Data settings
   include_plan: true
   include_reasoning: true
-  max_length: 2048
+  max_length: 1024
   max_prompt_length: 1024
   
   # Optimization

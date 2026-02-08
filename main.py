@@ -8,7 +8,7 @@ from src.help_functions.prompts_templates import *
 
 from src.Evaluator import get_evaluator
 from src.universal_agent import UniversalAgent
-from src.math_core import MATHCore, AIME24Core
+from src.math_core import AMOCore, MATHCore, AIME24Core
 from src.gsm8k_core import GSM8KCore
 from src.help_functions.prm_selector import PRMSelector
 import time
@@ -676,9 +676,11 @@ def evaluate_dataset(
     # print(f"🚧🚧🚧🚧🚧🚧🚧use_prm_selection: {use_prm_selection}")
     prm_selection_metric = config["eval"].get("prm_selection_metric", "mean_reward")
     
-    if dataset_name.lower() == "math" or dataset_name.lower() == "aime24":
+    if dataset_name.lower() == "math" or dataset_name.lower() == "aime24" or dataset_name.lower() == "amo":
         if dataset_name.lower() == "aime24":
             core = AIME24Core(agent, prompts)
+        if dataset_name.lower() == "amo":
+            core = AMOCore(agent, prompts)
         else:
             core = MATHCore(agent, prompts)
         
@@ -778,7 +780,7 @@ def main():
         "--dataset",
         type=str,
         default="math",
-        choices=["math", "gsm8k", "aime24"],
+        choices=["math", "gsm8k", "aime24", "amo"],
         help="Dataset to evaluate on (math or gsm8k)"
     )
     parser.add_argument(

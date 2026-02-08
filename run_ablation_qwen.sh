@@ -6,9 +6,10 @@
 # nohup ./run_ablation_qwen.sh > ablation_main_qwen.log 2>&1 &
 
 
-MAX_PARALLEL=2
+MAX_PARALLEL=1
 
-NUM_ITERATIONS=(1 5 10)
+# NUM_ITERATIONS=(1 5 10)
+NUM_ITERATIONS=(5 10)
 FIXED_TOOLS=("cot" "self_reflection")
 STRATEGIES=("best_of_n" "beam_search" "lookahead")
 PARAMS=(1 5 10)
@@ -21,8 +22,8 @@ FILTER_PARAM=""
 
 ################################################################################
 
-CONFIG_DIR="./configs_ablation_qwen"
-LOG_DIR="./logs_ablation_qwen"
+CONFIG_DIR="./configs_ablation_qwen_math"
+LOG_DIR="./logs_ablation_qwen_math"
 mkdir -p "$CONFIG_DIR" "$LOG_DIR"
 
 GREEN='\033[0;32m'
@@ -56,7 +57,7 @@ agent:
 eval:
   num_workers: 16
   output_dir: fixed_tool_compute_qwen_${tool}_${strategy}_${param}_iteration_${num_iter}
-  max_problems: null
+  max_problems: 100
   num_iterations: $num_iter
   use_prm_selection: true
   prm_selection_metric: "mean_reward"
@@ -65,12 +66,12 @@ eval:
   difficulty_levels: null
 
 client:
-  client_name: ollama
-  base_url: http://localhost:11434/v1
-  model_id: qwen2.5:7b-instruct
+  client_name: transformer
+  base_url: http://localhost4:11434/v1
+  model_id: Qwen/Qwen2.5-7B-Instruct
   generate_kwargs:
-    temperature: 0.95
-    top_k: 0.95
+    temperature: 0.3
+    top_k: 20
     max_tokens: 1024
   timeout: 60
   max_retries: 5

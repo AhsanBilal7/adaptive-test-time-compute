@@ -207,7 +207,7 @@ def _print_summary_table(rows: List[Dict[str, Any]]) -> None:
 
 
 if __name__ == "__main__":
-    parent_dir = Path("./result_ablation_qwen_MATH")
+    parent_dir = Path("./amo_results")
 
     model_config = {
         "model_parameters": 7e9,
@@ -239,3 +239,5 @@ if __name__ == "__main__":
         print(f"[OK] Saved: {out_path}")
 
     _print_summary_table(summary_rows)
+
+

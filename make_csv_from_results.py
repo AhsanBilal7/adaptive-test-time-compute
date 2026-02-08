@@ -651,10 +651,16 @@ def generate_trajectory_report(pathway_data: List[Dict], output_dir: Path):
 
 
 def visualize_trajectories(pathway_file: str, output_dir: str, num_sample_problems: int = 5):
-    output_path = Path(output_dir)
+    # Get the parent directory name from the pathway file
+    pathway_path = Path(pathway_file)
+    parent_dir_name = pathway_path.parent.name
+    
+    # Create output directory with parent directory name
+    output_path = Path(output_dir) / parent_dir_name
     output_path.mkdir(parents=True, exist_ok=True)
     
     print(f"Loading pathway data from: {pathway_file}")
+    print(f"Output will be saved to: {output_path}")
     pathway_data = load_pathway_data(pathway_file)
     
     print(f"\nGenerating visualizations...")
@@ -706,7 +712,7 @@ def main():
     parser.add_argument(
         "--pathway_file",
         type=str,
-        default="./all_saved_results/llama3.1_8b_instruct/dynamic_results/math_mode-dynamic_planner-True_toolsel-True_computesel-True_pathway.json",
+        default="./amo_results/dynamic_results_testing_with_prm_llama_8b_1_iterations_amo/math_mode-dynamic_planner-True_toolsel-True_computesel-True_pathway.json",
         help="Path to the pathway JSON file or results_final.json file"
     )
     parser.add_argument(

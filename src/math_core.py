@@ -192,6 +192,87 @@ def get_unnormalized_answer(text: str) -> str:
     return INVALID_ANSWER
 
 
+def load_amo_dataset(
+    split: str = "train",
+    problem_types: Optional[List[str]] = None,
+    difficulty_levels: Optional[List[str]] = None,
+    max_problems: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Loader for the AMO-Bench dataset: meituan-longcat/AMO-Bench.
+
+    Returns a list of dicts with the same keys as load_math_dataset, so that the
+    rest of the evaluation pipeline (check_answer, extract_prediction, etc.)
+    can stay unchanged.
+    """
+    print("[INFO] Loading AMO-Bench dataset from Hugging Face (meituan-longcat/AMO-Bench)")
+
+    ds = load_dataset("meituan-longcat/AMO-Bench")
+    
+    # Check available splits and use the appropriate one
+    if split not in ds:
+        available_splits = list(ds.keys())
+        print(f"[WARN] Split '{split}' not found. Available splits: {available_splits}")
+        # Default to first available split
+        split = available_splits[0] if available_splits else "train"
+        print(f"[INFO] Using split: {split}")
+
+    dataset = ds[split]
+    print(f"[INFO] Loaded {len(dataset)} AMO-Bench problems from {split} split")
+
+    if problem_types:
+        print("[WARN] problem_types filter ignored for AMO-Bench dataset")
+
+    if difficulty_levels:
+        print("[WARN] difficulty_levels filter ignored for AMO-Bench dataset")
+
+    if max_problems is not None:
+        dataset = dataset.select(range(min(max_problems, len(dataset))))
+        print(f"[INFO] Limited to {len(dataset)} AMO-Bench problems")
+
+    problems: List[Dict[str, Any]] = []
+    for idx in range(len(dataset)):
+        row = dataset[idx]
+
+        # Adapt these field names based on actual AMO-Bench schema
+        # Common possibilities: "question", "problem", "query"
+        problem = row.get("prompt") or row.get("question") or row.get("query", "")
+        
+        # Common possibilities: "solution", "answer", "ground_truth"
+        solution = row.get("solution", "")
+        answer_field = row.get("answer") or row.get("ground_truth", "")
+        
+        # Convert answer to string if needed
+        if isinstance(answer_field, (int, float)):
+            hf_answer = str(answer_field)
+        else:
+            hf_answer = answer_field
+
+        # Prefer the boxed answer in the solution, fall back to Answer field
+        boxed_answer = last_boxed_only_string(solution) if solution else None
+        if boxed_answer:
+            gold_answer_extracted = remove_boxed(boxed_answer)
+        else:
+            gold_answer_extracted = hf_answer
+
+        gold_answer_normalized = normalize_final_answer(gold_answer_extracted)
+
+        problems.append(
+            {
+                "problem_id": idx,
+                "id": row.get("id", f"amo-{idx}"),  # keep original ID if available
+                "problem": problem,
+                "gold_answer_raw": hf_answer,
+                "gold_answer_extracted": gold_answer_extracted,
+                "gold_answer_normalized": gold_answer_normalized,
+                "problem_type": "AMO_Bench",
+                "level": row.get("level") or row.get("difficulty"),  # keep if available
+                "solution": solution,
+            }
+        )
+
+    return problems
+
 
 def load_aime24_dataset(
     split: str = "train",
@@ -417,6 +498,29 @@ class AIME24Core(MATHCore):
         max_problems: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         return load_aime24_dataset(
+            split=split,
+            problem_types=problem_types,
+            difficulty_levels=difficulty_levels,
+            max_problems=max_problems,
+        )
+
+
+
+class AMOCore(MATHCore):
+    """
+    Same interface as MATHCore, but backed by the AMO-Bench dataset.
+    Only the dataset loading is changed; everything else (check_answer,
+    extract_prediction, solve, reset, get_stats) is inherited.
+    """
+
+    @staticmethod
+    def load_dataset(
+        split: str = "train",
+        problem_types: Optional[List[str]] = None,
+        difficulty_levels: Optional[List[str]] = None,
+        max_problems: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        return load_amo_dataset(
             split=split,
             problem_types=problem_types,
             difficulty_levels=difficulty_levels,

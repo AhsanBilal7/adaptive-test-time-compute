@@ -39,7 +39,7 @@ from src.trainer_files.evaluate_controller import ControllerEvaluator
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format='*name)s - %(message)s',
     handlers=[
         logging.FileHandler('training.log'),
         logging.StreamHandler(sys.stdout)
@@ -483,15 +483,18 @@ class ControllerTrainingMain:
             logger.info("Skipping preference pair generation (as requested)")
         
         # Stage 2: SFT
-        sft_model_path = None
-        if not skip_sft:
-            sft_model_path = self.stage_2_train_sft()
-            if sft_model_path is None:
-                logger.error("SFT training failed")
-                return False
-        else:
-            logger.info("Skipping SFT training (as requested)")
-            sft_model_path = self.experiment_dir / 'sft' / 'final'
+        # sft_model_path = None
+        # if not skip_sft:
+        #     sft_model_path = self.stage_2_train_sft()
+        #     if sft_model_path is None:
+        #         logger.error("SFT training failed")
+        #         return False
+        # else:
+        #     logger.info("Skipping SFT training (as requested)")
+        #     sft_model_path = self.experiment_dir / 'sft' / 'final'
+        
+        sft_model_path = Path("./models/controller_20260112_132555/sft/final")
+        
         
         # Stage 3: GRPO
         grpo_model_path = None

@@ -23,7 +23,7 @@
 
 # eval:
 #   num_workers: 16
-#   output_dir: direct_results_test_llama_8b_1_iteration
+#   output_dir: direct_results_test_llama3.1_8b_1_iteration_amo
 #   num_iterations: 1
 #   prm_selection_metric: null  
 
@@ -143,7 +143,7 @@
 
 # eval:
 #   num_workers: 16
-#   output_dir: dynamic_results_testing_with_prm_llama_8b_1_iterations
+#   output_dir: dynamic_results_testing_with_prm_llama_8b_1_iterations_amo
 #   max_problems: 100
 #   num_iterations: 1
 
@@ -162,8 +162,8 @@
 #   # base_url: http://localhost4:11434/v1
 #   # model_id: qwen2.5:7b-instruct
 #   generate_kwargs:
-#     temperature: 0.85
-#     top_k: 30
+#     temperature: 0.3
+#     top_k: 20
 #     max_tokens: 1024
 #   timeout: 60
 #   max_retries: 5
@@ -187,7 +187,7 @@ agent:
 
 eval:
   num_workers: 16
-  output_dir: dynamic_results_testing_with_prm_llama_8b_10_iterations
+  output_dir: dynamic_results_testing_with_prm_llama_8b_10_iterations_amo
   max_problems: 100
   num_iterations: 10
 
@@ -282,7 +282,7 @@ client:
 #   use_prm_selection: true  
 #   prm_selection_metric: "mean_reward"  
 
-#   max_problems: null
+#   max_problems: 100
 #   split: test
 #   problem_types: null
 #   difficulty_levels: null
@@ -290,7 +290,7 @@ client:
 # client:
 #   client_name: trained_model
 #   model_id: controller_v1  # Identifier for your model
-#   model_path: ./models/controller_20260106_125344/grpo/final
+#   model_path: ./models/final_train_8_bit/grpo/final
   
 #   # Model loading options
 #   load_in_4bit: true  # Use 4-bit quantization to save memory
@@ -299,10 +299,9 @@ client:
   
 #   # Generation parameters
 #   generate_kwargs:
-#     temperature: 0.7  # Lower for more deterministic (0.0-1.0)
-#     max_tokens: 512  # Max tokens to generate
-#     top_p: null  # Optional nucleus sampling (0.0-1.0)
-#     top_k: null  # Optional top-k sampling
+#     temperature: 0.3  # Lower for more deterministic (0.0-1.0)
+#     max_tokens: 1024  # Max tokens to generate
+#     top_p: 20  # Optional nucleus sampling (0.0-1.0)
   
 #   # Retry configuration
 #   max_retries: 5
