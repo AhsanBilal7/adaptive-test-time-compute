@@ -1,6 +1,31 @@
-ollama
+# Core: agent, PRM verifier, and evaluation
+torch>=2.1
+transformers>=4.40
+accelerate
+numpy
+sympy
+pydantic>=2
+omegaconf
 pyyaml
-tqdm
 datasets
+tqdm
 tenacity
 python-dotenv
+
+# LLM clients (BALROG/balrog/client.py)
+ollama
+openai
+anthropic
+google-generativeai
+
+# Plots
+matplotlib
+seaborn
+
+# Optional: 8-bit / 4-bit model loading (load_in_8bit / load_in_4bit)
+# bitsandbytes
+
+# Optional: learned-controller training (not used in the paper)
+# peft
+# trl
+# wandb

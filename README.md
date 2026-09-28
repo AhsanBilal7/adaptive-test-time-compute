@@ -153,13 +153,11 @@ cd adaptive-test-time-compute
 conda create -n adaptive-ttc python=3.10 -y
 conda activate adaptive-ttc
 
-# PyTorch: pick the build for your CUDA version from https://pytorch.org
-pip install torch
-
+# Optional: install the PyTorch build for your CUDA version first (https://pytorch.org)
 pip install -r requirements.txt
-pip install transformers accelerate bitsandbytes omegaconf numpy sympy pydantic \
-            matplotlib seaborn openai anthropic google-generativeai
 ```
+
+`requirements.txt` lists optional extras as comments: `bitsandbytes` for 8-bit/4-bit loading, and `peft`, `trl`, `wandb` for the learned-controller code.
 
 `main.py` imports the client from `BALROG/balrog/client.py` directly, so you do **not** need to install the BALROG environments. Run every command from the repository root.
 
@@ -331,7 +329,7 @@ python main_trajectory_generator.py --config main_trajectory_config.yaml   # col
 python training_main.py --config training_config.yaml --stage all          # preferences -> SFT -> DPO -> evaluate
 ```
 
-This path needs extra packages: `pip install peft trl datasets wandb`.
+This path needs the optional packages: `pip install peft trl wandb`.
 
 ---
 

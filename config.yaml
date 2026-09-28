@@ -206,8 +206,8 @@ client:
   # base_url: http://localhost4:11434/v1
   # model_id: qwen2.5:7b-instruct
   generate_kwargs:
-    temperature: 0.3
-    top_k: 20
+    temperature: 0.7
+    top_p: 0.9
     max_tokens: 1024
   timeout: 60
   max_retries: 5
