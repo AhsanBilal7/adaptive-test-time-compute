@@ -14,8 +14,9 @@ agent:
 eval:
   num_workers: 16
   output_dir: fixed_tool_results
+  num_iterations: 10
   max_problems: 120
-  split: train
+  split: test
   problem_types: null
   difficulty_levels: null
 

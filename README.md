@@ -19,14 +19,16 @@ This is the official code for **"What If We Allocate Test-Time Compute Adaptivel
 Standard test-time scaling spends the same compute on every problem and uses verification only to rerank finished answers. We instead treat reasoning as **iterative trajectory generation and selection**, guided by a verifier. For each problem, the agent runs $K$ iterations. In each iteration it optionally writes a plan, **selects reasoning tools**, **selects a compute strategy and exploration parameter**, and then generates a trajectory. A **process reward model (PRM)** is the shared control signal. Within an iteration, step-level scores drive pruning and expansion. Across iterations, the mean trajectory reward picks the final answer. The controller is **training-free**: every decision comes from role-specific prompts to the same base LLM.
 
 <p align="center">
-<pre>
-                    ┌───────────── iteration i = 1..K ─────────────┐
- Question x ──► A_P: Plan ──► A_T: Tools ──► A_C: Strategy, m ──► Reasoning ──► A_F: Answer y_i
-                                {CoT, SR, NV, V, R, S}   {BoN, BS, LA}     (step-level PRM
-                                                                           pruning/expansion)
-                    └──────────────────────────────────────────────┘
- K trajectories ──► PRM reward R(τ_i) = mean_t v_t ──► ŷ = y_{argmax_i R(τ_i)}
-</pre>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/pipeline_dark.gif">
+    <img src="assets/pipeline_light.gif" width="760" alt="Animation: ten iterations, each with its own tools and compute strategy, are scored step by step by the PRM; the iteration with the highest mean reward is selected.">
+  </picture>
+</p>
+
+<p align="center">
+  <img src="assets/architecture.png" width="900" alt="Universal reasoning agent architecture (Figure 1 of the paper)">
+  <br>
+  <em><b>Figure 1.</b> The agent generates K candidate trajectories, and a PRM scores them to select the response (top). Each iteration runs planning (A<sub>P</sub>), tool selection (A<sub>T</sub>), compute selection (A<sub>C</sub>), and answer extraction (A<sub>F</sub>) (bottom).</em>
 </p>
 
 ---
@@ -34,6 +36,13 @@ Standard test-time scaling spends the same compute on every problem and uses ver
 ## Main Results
 
 Accuracy (%) with $K=10$ iterations and Qwen2.5-Math-PRM-7B as the verifier (Table 1 of the paper).
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/results_dark.png">
+    <img src="assets/results_light.png" width="900" alt="Bar charts of accuracy for Direct, Direct + PRM Sel., Dynamic, and Dynamic + PRM Sel. on MATH-500, AIME24, and AMO-Bench for Llama-3.1-8B and Qwen-2.5-7B.">
+  </picture>
+</p>
 
 | Dataset | Setting | Llama-3.1-8B-Instruct | Qwen-2.5-7B-Instruct |
 |---|---|:---:|:---:|
@@ -88,7 +97,7 @@ On MATH-500 with Qwen-2.5-7B, the best fixed tool/strategy configuration also re
 ├── run_ablation_qwen.sh           # 36-config ablation grid (Qwen, Transformers client)
 ├── compute_cost.py                # F_theo and S_CI for finished runs
 ├── make_csv_from_results.py       # Tool/strategy usage plots from run outputs
-├── configs/                       # Legacy mode presets (see note under Configuration)
+├── configs/                       # Mode presets: direct, dynamic, fixed tool, fixed compute
 ├── src/
 │   ├── universal_agent.py         # Adaptive agent (A_P, A_T, A_C, A_F)
 │   ├── math_core.py               # MATH-500 / AIME24 / AMO-Bench loaders and wrappers
@@ -99,6 +108,7 @@ On MATH-500 with Qwen-2.5-7B, the best fixed tool/strategy configuration also re
 │   └── trainer_files/             # SFT/DPO controller training (optional, not in paper)
 ├── training_main.py               # Optional learned-controller training entry point
 ├── main_trajectory_generator.py   # Optional rollout generation entry point
+├── assets/                        # README figures (make_figures.py regenerates them)
 └── BALROG/                        # LLM client wrappers (adapted from BALROG)
 ```
 
@@ -195,7 +205,7 @@ eval:
   difficulty_levels: null     # e.g. [1, 2, 3] (MATH-500 levels)
 ```
 
-> **Note:** `main.py` turns on PRM-based selection whenever `num_iterations > 1` and turns it off otherwise. The `--no-prm` flag has no effect. The files in `configs/` do not set `eval.num_iterations`, so add that key before you use them.
+> **Note:** `main.py` turns on PRM-based selection whenever `num_iterations > 1` and turns it off otherwise. The `--no-prm` flag has no effect. Ready-made presets are in `configs/`: `config_direct.yaml` ($K=1$), `config_dynamic.yaml`, `config_fixed_tool.yaml`, and `config_fixed_compute.yaml` ($K=10$). They use the Ollama client and `max_problems: 120`; set `max_problems: null` to run the full dataset.
 
 ---
 

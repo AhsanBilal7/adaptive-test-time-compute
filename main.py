@@ -679,7 +679,7 @@ def evaluate_dataset(
     if dataset_name.lower() == "math" or dataset_name.lower() == "aime24" or dataset_name.lower() == "amo":
         if dataset_name.lower() == "aime24":
             core = AIME24Core(agent, prompts)
-        if dataset_name.lower() == "amo":
+        elif dataset_name.lower() == "amo":
             core = AMOCore(agent, prompts)
         else:
             core = MATHCore(agent, prompts)
@@ -740,6 +740,8 @@ def evaluate_dataset(
             return MATHCore(fresh_agent, prompts)
         elif dataset_name.lower() == "aime24":
             return AIME24Core(fresh_agent, prompts)
+        elif dataset_name.lower() == "amo":
+            return AMOCore(fresh_agent, prompts)
         else:
             return GSM8KCore(fresh_agent, prompts)
     
