@@ -2,15 +2,43 @@
 
 # What If We Allocate Test-Time Compute Adaptively?
 
+### 🎉 Accepted at ICML 2026 🎉
+
 **Ahsan Bilal**<sup>†1</sup>, **Muhammad Ahmed Mohsin**<sup>†2</sup>, **Muhammad Umer**<sup>2</sup>, **Ali Subhan**<sup>3</sup>, **Hassan Rizwan**<sup>4</sup>, **Ayesha Mohsin**<sup>5</sup>, **Dean F. Hougen**<sup>1</sup>
 
 <sup>1</sup>University of Oklahoma &nbsp; <sup>2</sup>Stanford University &nbsp; <sup>3</sup>Universitat Pompeu Fabra &nbsp; <sup>4</sup>University of California, Riverside &nbsp; <sup>5</sup>National University of Sciences and Technology
 <br><sup>†</sup>Equal contribution
 
-**ICML 2026**
+[![ICML 2026](https://img.shields.io/badge/ICML%202026-Accepted-2ea44f?style=for-the-badge)](https://icml.cc/virtual/2026/poster/60797)
+[![arXiv](https://img.shields.io/badge/arXiv-2602.01070-b31b1b?style=for-the-badge&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2602.01070)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
 
-[![Paper](https://img.shields.io/badge/arXiv-2602.01070-b31b1b.svg)](https://arxiv.org/abs/2602.01070)
-[![ICML 2026](https://img.shields.io/badge/ICML-2026-blue.svg)](https://icml.cc/virtual/2026/poster/60797)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![Transformers](https://img.shields.io/badge/%F0%9F%A4%97%20Transformers-FFD21E)](https://huggingface.co/docs/transformers)
+[![Verifier](https://img.shields.io/badge/PRM-Qwen2.5--Math--PRM--7B-8A2BE2)](https://huggingface.co/Qwen/Qwen2.5-Math-PRM-7B)
+
+[**Results**](#main-results) · [**Installation**](#installation) · [**Quick Start**](#quick-start) · [**Reproduce**](#reproducing-the-paper) · [**Citation**](#citation)
+
+</div>
+
+---
+
+## 📢 News
+
+- 🎉 **Our paper was accepted at ICML 2026** (Seoul, South Korea). See the [poster page](https://icml.cc/virtual/2026/poster/60797).
+- 🚀 **Code released**: the full adaptive agent, all prompts, ablation scripts, and compute-cost metrics.
+
+---
+
+> [!TIP]
+> **TL;DR** Instead of spending the same compute on every problem, let a verifier decide *where* it goes. Our training-free agent picks its tools and search strategy per problem, and a process reward model steers each trajectory and selects the best one.
+
+<div align="center">
+
+| 📈 **+21.6** pts | 📈 **+10.2** pts | 🏆 **2×** | 🧊 **0** |
+|:---:|:---:|:---:|:---:|
+| MATH-500, Llama-3.1-8B<br>43.8 → 65.4 | MATH-500, Qwen-2.5-7B<br>71.2 → 81.4 | AMO-Bench accuracy<br>2.0 → 4.0 | Training steps:<br>prompts only |
 
 </div>
 
@@ -328,7 +356,7 @@ This project builds on [BALROG](https://github.com/balrog-ai/BALROG) (LLM client
 
 ## License
 
-Released under the MIT License. The code in `BALROG/` keeps its original license ([`BALROG/LICENSE`](BALROG/LICENSE)).
+This project is released under the [MIT License](LICENSE). The code in `BALROG/` keeps its original license ([`BALROG/LICENSE`](BALROG/LICENSE)).
 
 ## Contact
 
