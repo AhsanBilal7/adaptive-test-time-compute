@@ -1,3 +1,5 @@
+"""Tool that reformulates questions or plans for clarity."""
+
 class ReframeTool:
     """Tool to reformulate questions or plans for better clarity."""
     

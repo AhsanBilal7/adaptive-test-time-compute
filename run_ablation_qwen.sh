@@ -1,14 +1,13 @@
 #!/bin/bash
 
 ################################################################################
-# FIXED: Ablation Study Runner with Directory Creation
+# Fixed-configuration ablation: tool x compute strategy x parameter x iterations (Table 2).
 ################################################################################
 # nohup ./run_ablation_qwen.sh > ablation_main_qwen.log 2>&1 &
 
 
 MAX_PARALLEL=1
 
-# NUM_ITERATIONS=(1 5 10)
 NUM_ITERATIONS=(5 10)
 FIXED_TOOLS=("cot" "self_reflection")
 STRATEGIES=("best_of_n" "beam_search" "lookahead")
@@ -88,7 +87,7 @@ run_experiment() {
     
     echo -e "${YELLOW}[$(date '+%H:%M:%S')] Starting: $exp_name${NC}"
     
-    # CREATE OUTPUT DIRECTORY BEFORE RUNNING
+    # Create the output directory before running
     mkdir -p "$output_dir"
     
     python main.py --config "$config_file" --dataset "$DATASET" > "$log_file" 2>&1

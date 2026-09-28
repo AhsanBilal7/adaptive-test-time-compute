@@ -1,3 +1,5 @@
+"""Pydantic schemas for structured selector and final-answer outputs in BALROG agents."""
+
 from typing import List, Literal
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 from typing import Optional, Dict, List, Any
@@ -18,7 +20,6 @@ class ToolsPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-
 class DecisionPayload(BaseModel):
     strategy: Literal["best_of_n", "beam_search", "lookahead"]
     param: int = Field(..., description="Best-of-N/beam: 2–8; lookahead: 1–3")
@@ -31,8 +32,6 @@ class DecisionPayload(BaseModel):
         if self.strategy == "lookahead" and not (1 <= self.param <= 3):
             raise ValueError("param must be in [1,3] for lookahead")
         return self
-    
-
 
 
 # Pydantic model for structured final answer output

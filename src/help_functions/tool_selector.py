@@ -1,3 +1,5 @@
+"""Tool selector (A_T): chooses an ordered subset of reasoning tools for a problem."""
+
 import json
 
 
@@ -15,6 +17,7 @@ _DEFAULT = {"tools": ["cot"]}
 
 
 class ToolSelector:
+    """Selects an ordered list of reasoning tools with the LLM (A_T)."""
     
     def __init__(self, client):
         self.client = client
@@ -31,24 +34,7 @@ class ToolSelector:
         user = {"role": "user", "content": formatted_prompt}
         msgs = [sys] + (history_messages[-3:] if history_messages else []) + [user]
         return msgs
-    
-    # def _parse_and_validate(self, text):
-    #     obj = json.loads(text.strip())
-    #     print("ToolSelector raw output:", obj)
-    #     tools = obj.get("tools", [])
-        
-    #     if not tools and "tool" in obj:
-    #         tools = [obj["tool"]]
-        
-    #     if isinstance(tools, str):
-    #         tools = [tools]
-        
-    #     validated = [t for t in tools if t in _VALID_TOOLS]
-        
-    #     if not validated:
-    #         validated = list(_DEFAULT["tools"])
-        
-    #     return {"tools": validated}
+
 
     def _parse_and_validate(self, text):
         obj = json.loads(text.strip())
@@ -79,6 +65,7 @@ class ToolSelector:
         return {"tools": validated}
         
     def select_tool(self, obs, plan, tool_selector_prompt, history_messages, schema, tool_selector_system_prompt):
+        """Return {'tools': [...]} for the given problem and plan."""
         messages = self._build_prompt(obs, plan, history_messages or [], tool_selector_prompt, tool_selector_system_prompt)
         
         resp = self.client.generate_with_structured(messages, schema=schema)
@@ -93,10 +80,6 @@ class ToolSelector:
             "selection": dict(selection),
         })
         
-        # print("======================================")
-        # print("ToolSelector Prompt Messages:", messages)
-        # print("ToolSelector selected tools:", selection)
-        # print("======================================")
         return selection
     
     def get_tool_distribution(self):

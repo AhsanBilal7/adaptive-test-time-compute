@@ -1,3 +1,5 @@
+"""PRM-guided compute strategies (Best-of-N, beam search, lookahead) for BALROG agents."""
+
 from typing import Any, Dict, List, Tuple
 import random
 

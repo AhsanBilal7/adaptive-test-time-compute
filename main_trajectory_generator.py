@@ -1,3 +1,5 @@
+"""Generates agent rollouts and preference pairs for the optional learned-controller experiments."""
+
 import argparse
 import yaml
 from omegaconf import DictConfig
@@ -59,23 +61,4 @@ if __name__ == "__main__":
         batch_size=32
     )
 
-
-
-
-    # # ===== STAGE 2: Training =====
-    # print("\n" + "="*60)
-    # print("STAGE 2: Training")
-    # print("="*60)
-    
-    # # Load datasets
-    # train_dataset = TrajectoryDataset(
-    #     rollouts_file=output_dir / "rollouts_train.jsonl",
-    #     prefs_file=output_dir / "prefs_train.jsonl"
-    # )
-    
-    # val_dataset = TrajectoryDataset(
-    #     rollouts_file=output_dir / "rollouts_dev.jsonl",
-    #     prefs_file=output_dir / "prefs_dev.jsonl"
-    # )
-    
 

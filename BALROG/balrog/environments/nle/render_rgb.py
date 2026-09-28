@@ -1,3 +1,5 @@
+"""RGB tile rendering of NLE observations."""
+
 import os
 import pickle
 
@@ -5990,8 +5992,6 @@ MAXMONTILE = 393
 MAXOBJTILE = 849
 MAXOTHTILE = 1037
 
-# MAX_ACTION_LENGTH = max([len(action_strs[0]) for action, action_strs in NLELanguageWrapper.all_nle_action_map.items()] + [len("ACTION HISTORY"),])
-
 
 def load_atlas():
     tiles_path = os.path.join(os.path.dirname(__file__), "tiles.pkl")
@@ -6002,10 +6002,6 @@ def load_atlas():
 
 
 DEFAULT_TEXTURE_ATLAS = load_atlas()
-
-# image = np.concatenate((DEFAULT_TEXTURE_ATLAS, np.zeros((38, 16, 16, 3), dtype=DEFAULT_TEXTURE_ATLAS.dtype)), axis=0)
-# image = image.reshape(28, 40, 16, 16, 3).transpose(0, 2, 1, 3, 4).reshape(448, 640, 3)
-# Image.fromarray(image).save("loaded_atlas.png")
 
 
 def rgb_render_image(glyphs, *, texture_atlas=None):
@@ -6027,14 +6023,12 @@ if __name__ == "__main__":
 
     env = tasks.NetHackChallenge(
         **dict(
-            # savedir="./experiment_outputs/dummy_ttyrec",
             character="@",
             max_episode_steps=100000000,
             penalty_step=0.0,
             penalty_time=0.0,
             penalty_mode="constant",
             no_progress_timeout=100,
-            # save_ttyrec_every=1,
         )
     )
 

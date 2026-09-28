@@ -1,3 +1,5 @@
+"""Dataset loader, answer normalization, and agent wrapper for GSM8K."""
+
 import re
 import signal
 from typing import Optional, Dict, List, Any
@@ -151,6 +153,7 @@ def load_gsm8k_dataset(
     split: str = "test",
     max_problems: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
+    """Load GSM8K from Hugging Face."""
     print(f"[INFO] Loading GSM8K dataset from Hugging Face")
     
     ds = load_dataset("openai/gsm8k", "main")
@@ -225,6 +228,7 @@ def extract_gsm8k_prediction(response: UniversalResponse, problem_data: Dict) ->
 
 
 class GSM8KCore:
+    """Wraps a UniversalAgent with GSM8K prompts, loading, and answer checking."""
     def __init__(self, agent: UniversalAgent, prompts: Dict[str, str]):
         self.agent = agent
         self.prompts = prompts

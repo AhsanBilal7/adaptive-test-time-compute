@@ -1,8 +1,11 @@
+"""Intra-iteration compute strategies guided by step-level scores: Best-of-N, beam search, and lookahead."""
+
 import random
 import inspect
 
 
 class ComputeStrategy:
+    """Base class for compute strategies that rank candidates with the step scorer."""
     
     def __init__(self, prm_model, rng=None):
         self.prm_model = prm_model
@@ -101,12 +104,6 @@ class BestOfNStrategy(ComputeStrategy):
         best_action = candidates[best_idx]
         best_reasoning = reasoning_texts[best_idx]
 
-        # print("=======================================")
-        # print("Messages:", messages)
-        # print("Given Problem:", obs)
-        # print("All Rollout Reasons for Seed Action:",reasoning_texts)
-        # print("Rollout Reasoning:",  best_reasoning)
-        # print("=======================================")
         metadata = {
             "strategy": "best_of_n",
             "compute_config": dict(config),
@@ -281,6 +278,7 @@ class LookaheadStrategy(ComputeStrategy):
 
 
 def get_compute_strategy(strategy_name, prm_model, rng=None):
+    """Return the compute strategy instance for `strategy_name`."""
     strategies = {
         "best_of_n": BestOfNStrategy,
         "beam_search": BeamSearchStrategy,

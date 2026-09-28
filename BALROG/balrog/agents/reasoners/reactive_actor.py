@@ -1,3 +1,5 @@
+"""Reactive actor reasoner that outputs an action with brief reasoning."""
+
 import re
 
 class ReactiveActorReasoner:

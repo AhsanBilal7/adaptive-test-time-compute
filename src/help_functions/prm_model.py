@@ -1,7 +1,10 @@
+"""LLM-prompted step scorer used inside compute strategies and verification tools."""
+
 import re
 
 
 class PRMModel:
+    """Scores a reasoning step or response in [0, 1] by prompting the LLM."""
     
     def __init__(self, client):
         self.client = client

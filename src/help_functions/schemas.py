@@ -1,3 +1,5 @@
+"""Pydantic schemas for structured selector and final-answer outputs."""
+
 from typing import List, Literal, Optional
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 
@@ -14,11 +16,13 @@ Tool = Literal[
 
 
 class ToolsPayload(BaseModel):
+    """Tool selector output schema."""
     tools: List[Tool] = Field(min_length=1)
     model_config = ConfigDict(extra="forbid")
 
 
 class DecisionPayload(BaseModel):
+    """Compute selector output schema."""
     strategy: Literal["best_of_n", "beam_search", "lookahead"]
     param: int = Field(..., description="Best-of-N/beam: 2-8; lookahead: 1-3")
     model_config = ConfigDict(extra="forbid")
@@ -33,6 +37,7 @@ class DecisionPayload(BaseModel):
 
 
 class FinalAnswer(BaseModel):
+    """Structured final-answer schema."""
     answer: int = Field(description="The final numerical answer or simplified expression")
     confidence: Optional[float] = Field(default=None, description="Confidence score between 0 and 1")
     model_config = ConfigDict(extra="forbid")

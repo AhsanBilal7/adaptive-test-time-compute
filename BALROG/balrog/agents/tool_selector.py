@@ -1,3 +1,5 @@
+"""Tool selector for BALROG agents: chooses an ordered list of reasoning tools."""
+
 import json
 from typing import Dict, Any, List
 
@@ -80,14 +82,12 @@ class ToolSelector:
         }
 
         msgs = [sys] + (history_messages[-3:] if history_messages else []) + [user]
-        # msgs = [sys] + [user]
         return msgs
     
     def _parse_and_validate(self, text: str) -> Dict[str, Any]:
         """
         Parse and validate multi-tool selection with backward compatibility.
         """
-        # print("Raw tool selection text:", text)  # Debugging line
         try:
             obj = json.loads(text.strip())
             tools = obj.get("tools", [])
@@ -101,7 +101,7 @@ class ToolSelector:
                 tools = [tools]
             
         except Exception as e:
-            print("Error parsing tool selection JSON in the parse and validation function:", e)  # Debugging line
+            print("Error parsing tool selection JSON in the parse and validation function:", e)
             return dict(_DEFAULT)
         
         # Filter to valid tools only
@@ -127,19 +127,14 @@ class ToolSelector:
         """
         messages = self._build_prompt(obs, plan, history_messages or [])
 
-        # print("The message is:", messages)  # Debugging line
         try:
-            # print("Sending messages to LLM for tool selection...", messages)
-            # resp = self.client.generate(messages)
             resp = self.client.generate_with_structured(messages, schema=ToolsPayload.model_json_schema())
             text = resp.completion if hasattr(resp, "completion") else str(resp)
-            print("Tool selection response text:", text)  # Debugging line
+            print("Tool selection response text:", text)
         except Exception as e:
             selection = dict(_DEFAULT)
-            # print(f"Exception {e} occurred during tool selection; using default:", selection)
         else:
             selection = self._parse_and_validate(text)
-            # print("Tool selection response selection:", selection)  # Debugging line
         
         # Record immutable snapshot
         self.tool_selection_history.append({

@@ -1,3 +1,5 @@
+"""Language wrapper for the BabyAI-Text environment."""
+
 import gymnasium as gym
 from PIL import Image
 

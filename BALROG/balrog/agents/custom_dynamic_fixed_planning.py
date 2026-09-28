@@ -98,8 +98,6 @@ class CustomAgent(BaseAgent):
             )
         
         # Append instruction to prompt
-        # if messages and messages[-1].get('role') == 'user':
-        #     messages[-1]['content'] += "\n\n" + instruction
         if messages and messages[-1].role == "user":
             messages[-1].content += "\n\n" + instruction
 
@@ -413,7 +411,5 @@ USAGE EXAMPLES FOR DIFFERENT STRATEGIES:
        stats = agent.get_planning_stats()
        print(f"Episode {episode}: {stats}")
 """
-
-
 
 

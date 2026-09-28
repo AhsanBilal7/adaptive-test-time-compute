@@ -1,3 +1,5 @@
+"""TextWorld environment constructor."""
+
 from typing import Optional
 
 from balrog.environments.textworld import global_textworld_context

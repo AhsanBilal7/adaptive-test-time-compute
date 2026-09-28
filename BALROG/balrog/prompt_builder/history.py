@@ -1,3 +1,5 @@
+"""Prompt builder that keeps a history of observations, actions, and reasoning."""
+
 from collections import deque
 from typing import List, Optional
 

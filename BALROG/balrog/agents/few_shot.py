@@ -1,3 +1,5 @@
+"""Few-shot BALROG agent using in-context demonstration episodes."""
+
 import copy
 import re
 from typing import List, Optional

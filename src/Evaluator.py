@@ -1,3 +1,5 @@
+"""Answer extraction and equivalence checking for math benchmarks (adapted from the Satori evaluation code)."""
+
 import os, json, re
 import random
 from typing import List, Dict, Tuple
@@ -7,6 +9,7 @@ from src.help_functions.math_toolkit.latex_answer_check import latex_equiv as la
 
 
 class Evaluator:
+    """Base answer extractor and equivalence checker."""
     def __init__(self, num_last_chars_for_eval=128) -> None:
         self.num_last_chars_for_eval = num_last_chars_for_eval
 
@@ -106,30 +109,8 @@ class Evaluator:
         
     def _extract_answer_from_model_completion(self, completion: str) -> str:
         raise NotImplementedError
-    
-    # def find_majority_completion_and_answer(self, list_of_completions: List[str]) -> str:
-    #     """Find the majority completion from a list of completions."""
-    #     if not list_of_completions:
-    #         return None, None
-        
-    #     completion_counter = defaultdict(int)
-    #     for completion in list_of_completions:
-    #         answer = self.extract_answer_from_model_completion(completion)
-            
-    #         answer_already_exists = False
-    #         for existing_completion in completion_counter.keys():
-    #             existing_answer = self.extract_answer_from_model_completion(existing_completion)
-    #             if self.check_answers_equiv(answer, existing_answer):
-    #                 answer_already_exists = True
-    #                 completion_counter[existing_completion] += 1
-    #                 break
-            
-    #         if not answer_already_exists:
-    #             completion_counter[completion] += 1
-        
-    #     majority_completion = max(completion_counter, key=completion_counter.get)
-    #     return majority_completion, self.extract_answer_from_model_completion(majority_completion)
-    
+
+
     def find_majority_completion_and_answer(self, candidates):
         """
         Finds the majority answer among the candidates using the evaluator's equivalence check.
@@ -175,6 +156,7 @@ class Evaluator:
 
 
 class GSM8KEvaluator(Evaluator):
+    """Evaluator for GSM8K numeric answers."""
     def __init__(self) -> None:
         super().__init__()
 
@@ -211,6 +193,7 @@ class GSM8KEvaluator(Evaluator):
 
 
 class MATHEvaluator(Evaluator):
+    """Evaluator for LaTeX math answers (MATH-500, AIME24, AMO-Bench)."""
     def __init__(self) -> None:
         super().__init__()
 
@@ -253,6 +236,7 @@ class MATHEvaluator(Evaluator):
 
 
 class OlympiadEvaluator(Evaluator):
+    """Evaluator for olympiad-style answers."""
     def __init__(self) -> None:
         super().__init__()
 
@@ -307,6 +291,7 @@ EvaluatorMapping = {
 
 
 def get_evaluator(task_name: str="MATH500") -> Evaluator:
+    """Return the evaluator for a task name."""
     if task_name in EvaluatorMapping:
         return EvaluatorMapping[task_name]()
     else:

@@ -1,3 +1,5 @@
+"""Main evaluation entry point: runs the adaptive agent for K iterations per problem and selects the final answer with the PRM (MATH-500, AIME24, AMO-Bench, GSM8K)."""
+
 import yaml
 import argparse
 from typing import Dict, Any
@@ -153,14 +155,9 @@ def evaluate_reasoning_agent(
             iteration_start = time.time()
             response = agent.solve(problem, **prompt_kwargs)
             iteration_time = time.time() - iteration_start
-            
-            #TODO ADDED THE EVALUATOR FROM SATORI
-            # predicted_answer = extract_prediction_fn(response, problem_data)
-            # is_correct = check_answer_fn(predicted_answer, gold_answer)
 
 
             predicted_answer = evaluator._extract_answer_from_model_completion(response.answer_unstructured)
-            # gold_answer = evaluator._extract_answer_from_gold_solution(gold_answer)
             is_correct = evaluator._check_answers_equiv(predicted_answer, gold_answer)
 
             print("••••••••••••••••••••••••••••••••••••••••••••••")
@@ -618,12 +615,14 @@ def evaluate_reasoning_agent(
     return final_results
 
 def load_config(config_path: str) -> Dict:
+    """Load a YAML config file."""
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
     return config
 
 
 def create_universal_agent(config: Dict) -> UniversalAgent:
+    """Build a UniversalAgent from the `agent` and `client` sections of the config."""
     client = create_llm_client(DictConfig(config["client"]))
     
     agent = UniversalAgent(
@@ -641,6 +640,7 @@ def create_universal_agent(config: Dict) -> UniversalAgent:
 
 
 def get_prompts() -> Dict[str, str]:
+    """Return all prompt templates used by the agent, keyed by name."""
     return {
         "planning_prompt_template": PLANNING_PROMPT_TEMPLATE,
         "system_prompt": MATH_SYSTEM_PROMPT,
@@ -667,13 +667,13 @@ def evaluate_dataset(
     config: Dict,
     verbose: bool = True
 ) -> Dict[str, Any]:
+    """Load the chosen dataset, build the agent, and run the multi-iteration evaluation."""
     agent = create_universal_agent(config)
     
     prompts = get_prompts()
     
     num_iterations = config["eval"].get("num_iterations", 20)
     use_prm_selection = config["eval"].get("use_prm_selection", False)
-    # print(f"🚧🚧🚧🚧🚧🚧🚧use_prm_selection: {use_prm_selection}")
     prm_selection_metric = config["eval"].get("prm_selection_metric", "mean_reward")
     
     if dataset_name.lower() == "math" or dataset_name.lower() == "aime24" or dataset_name.lower() == "amo":
@@ -769,6 +769,7 @@ def evaluate_dataset(
 
 
 def main():
+    """Parse CLI arguments and run evaluation; PRM selection is enabled when num_iterations > 1."""
     parser = argparse.ArgumentParser(description="Universal Agent Evaluation with PRM Selection")
     parser.add_argument(
         "--config", 
@@ -806,11 +807,6 @@ def main():
     
     config = load_config(args.config)
     
-    # Override config with command line arguments
-    # if args.no_prm:
-    #     config["eval"]["use_prm_selection"] = False
-    # else:
-    #     config["eval"]["use_prm_selection"] = True
     
     if config["eval"]["num_iterations"] > 1:
         config["eval"]["use_prm_selection"] = True

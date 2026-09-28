@@ -1,3 +1,5 @@
+"""Custom BALROG agent with planning, tool selection, and compute selection."""
+
 import re
 import copy
 import time
@@ -288,8 +290,8 @@ class CustomAgent(BaseAgent):
         compute_config = {'strategy': 'best_of_n', 'param': 1}
         
 
-        print(f"[DEBUG] Fixed Tool: {self.fixed_tool}, Use Tool selector: {self.use_tool_selector}")  # Debugging line
-        print(f"[DEBUG] Fixed Compute: {self.fixed_compute}, Use compute selector: {self.use_compute_selector}")  # Debugging line
+        print(f"[DEBUG] Fixed Tool: {self.fixed_tool}, Use Tool selector: {self.use_tool_selector}")
+        print(f"[DEBUG] Fixed Compute: {self.fixed_compute}, Use compute selector: {self.use_compute_selector}")
         if self.fixed_compute:
             compute_config = self.fixed_compute
         elif self.use_compute_selector and self.compute_selector:
@@ -514,7 +516,6 @@ class CustomAgent(BaseAgent):
         return "Noop"
 
 
-    
     def _get_dynamic_instruction(self):
         """
         Get planning instruction for dynamic mode.

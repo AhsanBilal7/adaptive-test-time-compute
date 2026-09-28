@@ -1,3 +1,5 @@
+"""Compute-cost metrics for finished runs: theoretical FLOPs (F_theo) and compute intensity score (S_CI)."""
+
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional, List
@@ -10,6 +12,11 @@ def compute_average_compute_cost(
     K: float = 1e6,
     token_multiplier: float = 1.5,
 ) -> Dict[str, Any]:
+    """Compute accuracy, S_CI, and per-problem F_theo from a results_final.json dict.
+
+    S_CI = G * T * (1 + 0.1 * C) / K, where G is generations, T reasoning tokens,
+    and C tool calls per problem. F_theo = 2 * M * min(1.5 * T, L_ctx) * G.
+    """
     statistics = results_json.get("statistics", {})
     results = results_json.get("results", [])
 
@@ -17,7 +24,7 @@ def compute_average_compute_cost(
     num_iterations = statistics.get("num_iterations", 1)
     prm_enabled = statistics.get("prm_selection", {}).get("enabled", False)
 
-    # ✅ ACCURACY comes from results_final.json (this file)
+    # Accuracy comes from results_final.json (this file)
     total_accuracy = statistics.get("accuracy", None)
 
     if total_problems == 0:
@@ -126,9 +133,10 @@ def compute_average_compute_cost(
 
 
 def compute_and_save_metrics(results_json_path: str, model_config: Optional[Dict[str, Any]] = None):
+    """Find the *_results_final.json in a run directory, compute cost metrics, and save them next to it."""
     results_path = Path(results_json_path)
 
-    # ✅ Always read accuracy from *_results_final.json (not pathway)
+    # Always read accuracy from *_results_final.json (not pathway)
     if results_path.is_dir():
         json_files = list(results_path.glob("*_results_final.json"))
         if not json_files:
@@ -159,6 +167,7 @@ def compute_and_save_metrics(results_json_path: str, model_config: Optional[Dict
 
 
 def _print_summary_table(rows: List[Dict[str, Any]]) -> None:
+    """Print a table of accuracy, compute intensity, and FLOPs per run."""
     if not rows:
         print("\nNo runs produced metrics.\n")
         return

@@ -1,3 +1,5 @@
+"""Instruction prompt for the BabaIsAI environment."""
+
 from balrog.environments.babaisai.base import BabaIsAIWrapper
 
 __all__ = [BabaIsAIWrapper]

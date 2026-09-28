@@ -1,3 +1,5 @@
+"""Common wrapper that standardizes BALROG environment interaction."""
+
 import gymnasium as gym
 
 

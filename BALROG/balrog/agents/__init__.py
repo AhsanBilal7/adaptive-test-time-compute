@@ -1,3 +1,5 @@
+"""Agent factory that builds BALROG agents from a Hydra/OmegaConf config."""
+
 from balrog.client import create_llm_client
 from hydra.utils import instantiate
 
@@ -82,8 +84,6 @@ class AgentFactory:
                 else None
             )
 
-            # print(f"[DEBUG] Fixed compute: {strategy}, {param}")  # Debugging line
-            # print(f"{agent_params["fixed_compute"]}")  # Debugging line
             
             # Use Hydra's instantiate with filtered parameters
             agent = instantiate(

@@ -1,3 +1,5 @@
+"""Package setup for BALROG."""
+
 import setuptools
 from setuptools import setup
 

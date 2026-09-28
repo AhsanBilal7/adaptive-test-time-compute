@@ -1,3 +1,5 @@
+"""TextWorld environment factory and wrapper."""
+
 import glob
 import importlib.resources
 import os

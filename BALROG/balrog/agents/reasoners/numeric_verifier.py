@@ -1,3 +1,5 @@
+"""PRM-based numeric verification tool."""
+
 class NumericVerifier:
     """PRM-based numeric verification tool."""
     

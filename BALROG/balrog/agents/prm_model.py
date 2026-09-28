@@ -1,3 +1,5 @@
+"""LLM-prompted process reward model for scoring candidate actions in BALROG agents."""
+
 class PRMModel:
     
     def __init__(self, client):

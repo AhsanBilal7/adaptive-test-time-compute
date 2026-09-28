@@ -1,3 +1,5 @@
+"""Reasoner that returns actions from a scripted heuristic policy."""
+
 class HeuristicScriptReasoner:
     
     def __init__(self, policy):

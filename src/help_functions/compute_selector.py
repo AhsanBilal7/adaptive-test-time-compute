@@ -1,3 +1,5 @@
+"""Compute selector (A_C): chooses a strategy (Best-of-N, beam search, lookahead) and its parameter m."""
+
 import json
 
 
@@ -11,6 +13,7 @@ _CLAMPS = {
 
 
 class ComputeSelector:
+    """Selects a compute strategy and exploration parameter with the LLM (A_C)."""
     
     def __init__(self, client):
         self.client = client
@@ -55,6 +58,7 @@ class ComputeSelector:
         return {"strategy": strategy, "param": param}
     
     def select_compute_strategy(self, obs, plan, tool_name, compute_selector_prompt, history_messages, schema, compute_selector_system_prompt):
+        """Return {'strategy', 'param'} for the given problem, plan, and tool."""
         messages = self._build_prompt(obs, plan, tool_name, compute_selector_prompt, history_messages or [], compute_selector_system_prompt)
         resp = self.client.generate_with_structured(messages, schema)
         text = resp.completion if hasattr(resp, "completion") else str(resp)

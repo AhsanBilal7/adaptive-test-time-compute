@@ -1,5 +1,8 @@
 # Here we should have an environment manager function that can be used to instantiate
 # environments with the correct wrappers.
+
+"""Environment factory that builds BALROG environments with the correct wrappers."""
+
 from gym import spaces
 
 from balrog.environments.env_wrapper import EnvWrapper

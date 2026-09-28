@@ -1,3 +1,5 @@
+"""Instruction prompt for TextWorld."""
+
 from balrog.environments.textworld.base import TextWorldFactory
 
 TEXTWORLD_FACTORY = None

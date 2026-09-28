@@ -1,3 +1,5 @@
+"""Naive BALROG agent that outputs an action without reasoning."""
+
 import copy
 import re
 

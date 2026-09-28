@@ -82,7 +82,6 @@ class ControllerTrainingMain:
         )
         self.experiment_dir = self.output_dir / self.experiment_name
         self.experiment_dir.mkdir(parents=True, exist_ok=True)
-        # self.experiment_dir =   Path("./models/controller_20260106_121859")
 
         # Save config to experiment directory
         with open(self.experiment_dir / 'config.yaml', 'w') as f:
@@ -355,7 +354,7 @@ class ControllerTrainingMain:
                 max_length=grpo_config.get('max_length', 2048),
                 max_prompt_length=grpo_config.get('max_prompt_length', 1024),
                 include_plan=grpo_config.get('include_plan', True),
-                include_reasoning=grpo_config.get('include_reasoning', True),  # Changed to True
+                include_reasoning=grpo_config.get('include_reasoning', True),
                 use_wandb=logging_config.get('use_wandb', False),
                 wandb_project=logging_config.get('wandb_project', 'controller-grpo'),
             )
@@ -483,15 +482,6 @@ class ControllerTrainingMain:
             logger.info("Skipping preference pair generation (as requested)")
         
         # Stage 2: SFT
-        # sft_model_path = None
-        # if not skip_sft:
-        #     sft_model_path = self.stage_2_train_sft()
-        #     if sft_model_path is None:
-        #         logger.error("SFT training failed")
-        #         return False
-        # else:
-        #     logger.info("Skipping SFT training (as requested)")
-        #     sft_model_path = self.experiment_dir / 'sft' / 'final'
         
         sft_model_path = Path("./models/controller_20260112_132555/sft/final")
         

@@ -1,3 +1,5 @@
+"""Dummy agent returning fixed actions, for debugging."""
+
 import logging
 from collections import defaultdict, namedtuple
 

@@ -1,3 +1,5 @@
+"""Downloads Boxoban and TextWorld assets after installation."""
+
 import os
 import subprocess
 import zipfile

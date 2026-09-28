@@ -1,3 +1,5 @@
+"""Multi-process evaluation of agents across BALROG environments and tasks."""
+
 import copy
 import csv
 import json

@@ -1,3 +1,5 @@
+"""Tool that compresses long reasoning chains."""
+
 class SummarizerTool:
     """Tool to compress long reasoning chains into concise summaries."""
     

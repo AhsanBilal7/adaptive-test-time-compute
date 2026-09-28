@@ -1,3 +1,5 @@
+"""Prompt templates for every agent stage (Appendix B of the paper)."""
+
 MATH_SYSTEM_PROMPT = """
 You are a specialized mathematical problem solver.
 Your role is to solve the user's math question accurately and efficiently,
@@ -388,7 +390,6 @@ STRICT REQUIREMENTS:
 Output format (mandatory):
 {{\"answer\": \"<your_final_answer>\"}}
 """
-
 
 
 # ============================================================================

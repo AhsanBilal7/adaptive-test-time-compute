@@ -1,3 +1,5 @@
+"""Heuristic scripted policy for the Crafter environment."""
+
 import re
 
 

@@ -1,3 +1,5 @@
+"""Original BALROG custom agent that keeps a plan and outputs an action."""
+
 import re
 
 from balrog.agents.base import BaseAgent

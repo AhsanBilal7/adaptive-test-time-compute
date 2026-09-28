@@ -1,3 +1,5 @@
+"""PRM-based general verification tool."""
+
 class VerifierTool:
     """General-purpose PRM-based verification tool for textual correctness."""
     

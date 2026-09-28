@@ -1,3 +1,5 @@
+"""Text-to-image rendering of NLE tty observations."""
+
 import os
 
 import numpy as np
@@ -62,11 +64,6 @@ def create_texture_map():
                 fill=COLORS[color_idx],
             )
 
-    # # DEBUG: Draw grid lines for columns and rows
-    # for col in range(65):  # +1 to close the grid on the right side
-    #     draw.line([(col * cell_width, 0), (col * cell_width, img_height)], fill=(255, 0, 0))
-    # for row in range(65):  # +1 to close the grid on the bottom side
-    #     draw.line([(0, row * cell_height), (img_width, row * cell_height)], fill=(255, 0, 0))
 
     return img
 
@@ -81,12 +78,6 @@ def make_atlas():
         .reshape(4096, cell_height, cell_width, 3)
     )
     return texture_atlas
-    # new_image = np.zeros((cell_height, 4096*cell_width, 3), dtype=np.uint8)
-    # for j in range(16):
-    #     for i, ch in enumerate(image[j]):
-    #         new_image[:, (i+j*256)*cell_width:((i+j*256)+1)*cell_width] = ch
-    # import matplotlib.pyplot as plt
-    # plt.imsave("new_image.png", new_image)
 
 
 DEFAULT_TEXTURE_ATLAS = make_atlas()
@@ -97,7 +88,7 @@ def tty_render_image(tty_chars, tty_colors, tty_cursor=None, *, texture_atlas=No
         texture_atlas = DEFAULT_TEXTURE_ATLAS
     tty_colors_masked = (
         tty_colors & 15
-    )  # I don't know why sometimes color > 15 but this is effectively what the ASCII renderers do
+    )  # Mask to the 16 base colors, as the ASCII renderers do
     return (
         texture_atlas[tty_colors_masked * 256 + tty_chars]
         .transpose(0, 2, 1, 3, 4)
@@ -159,14 +150,12 @@ if __name__ == "__main__":
 
     env = tasks.NetHackChallenge(
         **dict(
-            # savedir="./experiment_outputs/dummy_ttyrec",
             character="@",
             max_episode_steps=100000000,
             penalty_step=0.0,
             penalty_time=0.0,
             penalty_mode="constant",
             no_progress_timeout=100,
-            # save_ttyrec_every=1,
         )
     )
 

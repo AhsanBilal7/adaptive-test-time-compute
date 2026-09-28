@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ################################################################################
-# FIXED: Ablation Study Runner with Directory Creation
+# Fixed-configuration ablation: tool x compute strategy x parameter x iterations (Table 2).
 ################################################################################
 # nohup ./run_ablation.sh > ablation_main.log 2>&1 &
 
@@ -87,7 +87,7 @@ run_experiment() {
     
     echo -e "${YELLOW}[$(date '+%H:%M:%S')] Starting: $exp_name${NC}"
     
-    # CREATE OUTPUT DIRECTORY BEFORE RUNNING
+    # Create the output directory before running
     mkdir -p "$output_dir"
     
     python main.py --config "$config_file" --dataset "$DATASET" > "$log_file" 2>&1

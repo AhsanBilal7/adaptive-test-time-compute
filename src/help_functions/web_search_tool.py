@@ -1,4 +1,7 @@
+"""Web-search tool stub; no external search backend is connected."""
+
 class WebSearchTool:
+    """Web-search stub; returns a placeholder result."""
     
     def __init__(self, client=None):
         self.client = client

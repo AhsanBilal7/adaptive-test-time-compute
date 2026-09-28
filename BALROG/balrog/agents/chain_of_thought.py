@@ -1,3 +1,5 @@
+"""Chain-of-thought BALROG agent."""
+
 import copy
 import re
 

@@ -1,3 +1,5 @@
+"""Naive BALROG agent with a strict action output format."""
+
 import copy
 import re
 

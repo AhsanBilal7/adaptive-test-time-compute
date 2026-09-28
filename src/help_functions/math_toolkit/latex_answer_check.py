@@ -1,4 +1,3 @@
-
 # ---------------------------------------------------------
 # Xwin-Math
 # Copyright (c) 2023 Xwin-Math Team
@@ -6,6 +5,8 @@
 # Based on ToRA (https://github.com/microsoft/ToRA/blob/main/src/eval/grader.py)
 # Modified by Weiqi Wang
 # ---------------------------------------------------------
+"""LaTeX-aware answer equivalence checking for math answers."""
+
 import re
 from typing import Union, Any
 from copy import deepcopy
@@ -16,9 +17,6 @@ from sympy.parsing.sympy_parser import parse_expr
 from itertools import permutations
 
 from src.help_functions.math_toolkit.parsing_lib import *
-# from .custom_toolkit.latex import transform_tex
-# from src.evaluation.utils.custom_toolkit.latex import check_tex_equiv
-# from src.evaluation.utils.custom_toolkit.funcs import check_funcs_equiv
 
 
 def has_numbers(input_string: str) -> bool:
@@ -42,7 +40,7 @@ def sympy_parse(input_string: str) -> Any:
     Parsing strings into mathematical expressions using sympy
     """
     for f in [parse_latex, parse_expr]:
-        #!!!!!!! IMPORTANT: This is a temperary fix for sympy parsing issue
+        # Workaround for a sympy parsing issue.
         if f == parse_expr:
             if "^" in input_string:
                 input_string = input_string.replace("^", "**")
@@ -183,29 +181,13 @@ def sqrt_to_float(sqrt_str):
     raise ValueError("Input is not a valid \sqrt[]{} string")
 
 
-#TODO: this one does not work when running RL, don't know why
-# def convert_latex_numerical_string_to_float(latex_str):
-#     """
-#     Evaluate a LaTeX string to its numerical value.
-#     Handles nested fractions and square roots.
-#     """
-#     try:
-#         res = transform_tex(latex_str, "sympy")
-#         res = float(res)
-#         return res
-#     except:
-#         pass
-    
-#     return None
-
-
 def convert_latex_numerical_string_to_float(latex_str):
     """
     Evaluate a LaTeX string to its numerical value.
     Handles nested fractions and square roots.
     """
     # Remove outer parentheses if they exist
-    #! Order sensitive!
+    # Order sensitive.
     possible_parentheses = [
         ("\\left(", "\\right)"),
         ("(", ")"),
@@ -354,7 +336,7 @@ def _latex_equiv(model_answer: str, gt_answer: str) -> bool:
     model_answer = string_normalization(model_answer)
     gt_answer = string_normalization(gt_answer)
     
-    #! First try: literal check
+    # First try: literal check
     # Compare strings character by character after simple processing including remove $%.
     # First we remove the boxes in the string but keeps the content
     # \text{apple} --> apple
@@ -367,7 +349,7 @@ def _latex_equiv(model_answer: str, gt_answer: str) -> bool:
     if literal_check_result is True:
         return True
 
-    #! Second try: number check
+    # Second try: number check
     # Treat a string as a single number/extract a single number from a string and then compare.
     # If we can accept a few mistakes, we try to extract numbers from the answers and compare them
     
@@ -403,14 +385,13 @@ def _latex_equiv(model_answer: str, gt_answer: str) -> bool:
     # Here we must be really really careful.
     # x \\leq -5 vs. x \\geq -5
     # (-\\infty, 5) vs. (5, +\\infty)
-    # TODO: We may have better methods to check if the numbers are simple enough
     if len(model_ans_num_lst) == 1 and len(gt_num_lst) == 1 and \
         not has_structure(model_answer.replace(model_ans_num_lst[0], "")) and \
         not has_structure(gt_answer.replace(gt_num_lst[0], "")):
 
         model_num = remove_prefix_and_suffix(remove_boxes_keep_content(remove_text_box_only(model_ans_num_lst[0])))
         gt_num = remove_prefix_and_suffix(remove_boxes_keep_content(remove_text_box_only(gt_num_lst[0])))
-        parse_result = number_check(model_num, gt_num)  #todo: check if this is correct
+        parse_result = number_check(model_num, gt_num)
 
         # As an additional method of judgment, even if it returns False we can't say that the answer is wrong, it could be caused by an unreasonable extraction of numbers
         if parse_result is True:

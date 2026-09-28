@@ -1,3 +1,5 @@
+"""Language wrapper for NLE and MiniHack."""
+
 import random
 
 from nle import nle_language_obsv

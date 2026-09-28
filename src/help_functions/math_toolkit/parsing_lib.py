@@ -1,3 +1,5 @@
+"""String parsing helpers for extracting and normalizing math answers."""
+
 from pyparsing import *
 from typing import List
 import os

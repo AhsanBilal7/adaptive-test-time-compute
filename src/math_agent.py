@@ -1,3 +1,5 @@
+"""Standalone MATH-500 evaluation handler using LMEval (minerva_math) answer checking."""
+
 import re
 import time
 import json
@@ -262,7 +264,6 @@ def check_answer_equivalence(pred: str, gold: str) -> bool:
     # Normalize both answers
     pred_normalized = normalize_final_answer(pred_extracted)
     gold_normalized = normalize_final_answer(gold)
-    
 
 
     # Check exact string match first

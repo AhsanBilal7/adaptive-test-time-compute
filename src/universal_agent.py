@@ -1,3 +1,5 @@
+"""Universal reasoning agent: planning (A_P), tool selection (A_T), compute selection (A_C), and answer extraction (A_F) for one iteration."""
+
 import re
 import json
 from collections.abc import Mapping
@@ -15,6 +17,7 @@ from src.help_functions.tools import NumericVerifier, VerifierTool, SummarizerTo
 
 
 def get_field_from_completion(completion_text, field, default=None):
+    """Read a (dotted) field from a JSON completion, with a regex fallback for `answer`."""
     print(completion_text)
     try:
         data = json.loads(completion_text)
@@ -34,19 +37,9 @@ def get_field_from_completion(completion_text, field, default=None):
             return default
     return current
 
-# def get_field_from_completion(completion_text, field, default=None):
-#     print(completion_text)
-#     data = json.loads(completion_text)
-#     current = data
-#     for part in field.split("."):
-#         if isinstance(current, dict) and part in current:
-#             current = current[part]
-#         else:
-#             return default
-#     return current
-
 
 def _get(obj, key, default=None):
+    """Read `key` from an object attribute or a mapping."""
     if obj is None:
         return default
     val = getattr(obj, key, None)
@@ -58,11 +51,13 @@ def _get(obj, key, default=None):
 
 
 def _provided(x):
+    """Return True if `x` is set and not an empty string."""
     return x is not None and not (isinstance(x, str) and x.strip() == "")
 
 
 @dataclass
 class UniversalResponse:
+    """Output of one agent iteration: reasoning, steps, answers, plan, and metadata."""
     reasoning: Optional[str]  # Concatenated reasoning for backward compatibility
     reasoning_steps: List[str]  # Individual reasoning steps for PRM
     answer: str
@@ -74,6 +69,7 @@ class UniversalResponse:
 
 
 class UniversalPromptBuilder:
+    """Builds chat messages from the problem, current plan, and reasoning history."""
     def __init__(self, max_text_history=16, remember_cot=True):
         self.max_text_history = max_text_history
         self.remember_cot = remember_cot
@@ -108,6 +104,11 @@ class UniversalPromptBuilder:
 
 
 class UniversalAgent:
+    """Adaptive reasoning agent.
+
+    Modes: direct solve, fixed tool/compute, or dynamic selection of tools (A_T)
+    and compute strategy (A_C), with an optional planner (A_P).
+    """
     def __init__(
         self,
         client_factory,
@@ -156,7 +157,7 @@ class UniversalAgent:
         self.tools_used = []
         self.compute_configs_used = []
         
-        # New tracking for outputs
+        # Output tracking
         self.compute_strategy_outputs = []
         self.reasoner_outputs = []
         
@@ -196,6 +197,7 @@ class UniversalAgent:
         problem: str,
         prompts: Dict[str, str],
     ) -> UniversalResponse:
+        """Run one iteration on `problem` and return a UniversalResponse."""
         self.prompt_builder.set_problem(problem)
         
         # Reset tracking
@@ -247,6 +249,7 @@ class UniversalAgent:
         )
     
     def _make_plan(self, problem, planning_prompt_template):
+        """Generate a high-level plan with the planning prompt (A_P)."""
         plan_prompt = planning_prompt_template.format(problem=problem)
         plan_messages = [{"role": "user", "content": plan_prompt}]
         response = self.client.generate(plan_messages)
@@ -255,6 +258,7 @@ class UniversalAgent:
         return plan
     
     def _execute_direct(self, problem, prompts):
+        """Direct baseline: solve in a single pass without tools or compute strategies."""
         direct_messages = [
             {"role": "system", "content": prompts["direct_solve_system_prompt"]},
             {"role": "user", "content": prompts["direct_solve_prompt"].format(problem=problem)}
@@ -280,10 +284,6 @@ class UniversalAgent:
         unstructured_response = self.client.generate(unstructured_messages)
         final_answer_unstructured = unstructured_response.completion if hasattr(unstructured_response, "completion") else str(unstructured_response)
         
-        # print("*"*80)
-        # print("Messages for Direct Solve:", unstructured_messages)
-        # print("Direct Unstructured Final Answer Response:", final_answer_unstructured)
-        # print("*"*80)
 
         metadata = {
             "tool": "direct",
@@ -312,6 +312,7 @@ class UniversalAgent:
         return "", reasoning_steps, final_answer_structured, final_answer_unstructured
 
     def _execute_simple(self, problem, messages, prompts):
+        """Run the fixed tool with the fixed or selected compute strategy."""
         tool_name = self.fixed_tool if self.fixed_tool else "cot"
         self.tools_used = [tool_name]
         
@@ -429,6 +430,7 @@ class UniversalAgent:
         return full_reasoning, reasoning_steps, answer_structured, answer_unstructured
     
     def _execute_with_tools(self, problem, messages, prompts):
+        """Run the tools chosen by the tool selector in order, each with its compute strategy."""
         tool_selection = self.tool_selector.select_tool(
             problem,
             self.plan,
@@ -638,6 +640,7 @@ class UniversalAgent:
         return full_reasoning, reasoning_steps, answer_structured, answer_unstructured
     
     def _extract_final_answers(self, problem, full_reasoning, prompts):
+        """Extract the structured (JSON) and boxed final answers from the full reasoning (A_F)."""
         final_messages_structured = [
             {"role": "system", "content": prompts["final_answer_system_prompt"]},
             {
@@ -675,6 +678,7 @@ class UniversalAgent:
         return final_answer_structured, final_answer_unstructured
     
     def _extract_plan(self, text):
+        """Parse the plan from <plan>...</plan> tags."""
         plan_match = re.search(r"<plan>(.*?)</plan>", text, re.IGNORECASE | re.DOTALL)
         
         if plan_match:
@@ -685,6 +689,7 @@ class UniversalAgent:
         return None, text, False
     
     def get_stats(self):
+        """Return the agent configuration and selector/scorer usage statistics."""
         stats = {
             "use_planner": self.use_planner,
             "use_tool_selector": self.use_tool_selector,
@@ -705,6 +710,7 @@ class UniversalAgent:
         return stats
     
     def reset(self):
+        """Clear per-problem state."""
         self.plan = None
         self.compute_metadata_history = []
         self.tools_used = []

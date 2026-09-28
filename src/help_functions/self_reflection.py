@@ -1,7 +1,10 @@
+"""Self-Reflection (SR) reasoner: initial attempt, critique, and refinement."""
+
 import re
 
 
 class SelfReflectionReasoner:
+    """Self-Reflection reasoner: attempt, critique, refine."""
     def __init__(self, client):
         self.client = client
     
@@ -84,7 +87,6 @@ REFINED SOLUTION:
 Reasoning: {refined_reasoning}
 Action: {refined_action}"""
         
-        # return refined_action, full_reasoning
         return refined_action, refined_reasoning
     
     def _extract_reasoning_and_action(self, text):

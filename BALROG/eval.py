@@ -1,3 +1,5 @@
+"""Hydra entry point for BALROG environment evaluation."""
+
 import logging
 import os
 import sys
@@ -36,7 +38,6 @@ def main(config: DictConfig):
     else:
         now = datetime.now()
         timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
-        # run_name = f"{timestamp}_{config.agent.type}_{config.agent.mode}_{config.agent.planning_frequency}_{config.client.model_id.replace('/', '_')}"
         # Build run_name dynamically with abbreviations
         parts = [
             timestamp,

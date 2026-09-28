@@ -1,3 +1,5 @@
+"""Smoke test for BALROG evaluation."""
+
 import pytest
 from hydra import compose, initialize
 from hydra.core.global_hydra import GlobalHydra

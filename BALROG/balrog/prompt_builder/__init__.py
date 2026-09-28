@@ -1,3 +1,5 @@
+"""Prompt builder factory."""
+
 from .history import HistoryPromptBuilder
 
 import warnings

@@ -1,3 +1,5 @@
+"""Chain-of-thought reasoner for BALROG agents."""
+
 from email.mime import base
 import re
 
@@ -84,7 +86,6 @@ class CoTReasoner:
         instruction = self._get_cot_instruction(plan)
         
         messages_copy = messages.copy()
-        # print("messages_copy before adding instruction:", messages_copy)  # Debugging line
         
         # Add instruction to last user message
         if messages_copy:
@@ -99,10 +100,6 @@ class CoTReasoner:
         response = self.client.generate(messages_copy)
         action, reasoning = self._extract_action_and_reasoning(response.completion)
         
-        # print("messages_copy after adding instruction:", messages_copy)  # Debugging line
-        # print("CoT Reasoner response:", response.completion)  # Debugging line
-        # print("CoT Reasoner action:", action)  # Debugging line
-        # print("CoT Reasoner reasoning:", reasoning)  # Debugging line
 
         self.reasoning_history.append(reasoning)
         

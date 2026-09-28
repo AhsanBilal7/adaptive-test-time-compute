@@ -384,7 +384,7 @@ def main():
     
     client_factory = create_llm_client(DictConfig(config["client"]))
     
-    # Load prompts (you'll need to import these from your code)
+    # Load prompts
     prompts = {
         "system_prompt": MATH_SYSTEM_PROMPT,
         "final_answer_system_prompt": FINAL_ANSWER_SYSTEM_PROMPT,

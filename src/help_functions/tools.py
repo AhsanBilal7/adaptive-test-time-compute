@@ -1,4 +1,7 @@
+"""Auxiliary tools: Numeric Verifier (NV), Verifier (V), Summarizer (S), Reframer (R), and a web-search stub."""
+
 class NumericVerifier:
+    """Numeric Verifier (NV): scores numeric correctness of a response."""
     
     def __init__(self, prm_model):
         self.prm_model = prm_model
@@ -22,6 +25,7 @@ class NumericVerifier:
 
 
 class VerifierTool:
+    """Verifier (V): scores logical correctness of the full reasoning."""
     
     def __init__(self, prm_model):
         self.prm_model = prm_model
@@ -53,6 +57,7 @@ class VerifierTool:
 
 
 class SummarizerTool:
+    """Summarizer (S): compresses long reasoning."""
     
     def __init__(self, client):
         self.client = client
@@ -81,6 +86,7 @@ class SummarizerTool:
 
 
 class ReframeTool:
+    """Reframer (R): reformulates an ambiguous question or plan."""
     
     def __init__(self, client):
         self.client = client
@@ -114,6 +120,7 @@ class ReframeTool:
 
 
 class WebSearchTool:
+    """Web-search stub; returns a placeholder result."""
     
     def __init__(self, client=None):
         self.client = client

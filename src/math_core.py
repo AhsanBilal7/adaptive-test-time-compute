@@ -1,3 +1,5 @@
+"""Dataset loaders, answer normalization, and agent wrappers for MATH-500, AIME24, and AMO-Bench."""
+
 import re
 import signal
 from typing import Optional, Dict, List, Any
@@ -167,18 +169,6 @@ def is_equiv(x1: str, x2: str) -> bool:
         return False
 
 
-# def get_unnormalized_answer(text: str) -> str:
-#     INVALID_ANSWER = "[invalidanswer]"
-#     end_seq = "I hope it is correct."
-#     text += end_seq
-#     match = re.search(
-#         r"Final Answer: The final answer is(.*?)\. I hope it is correct\.",
-#         text,
-#     )
-#     if match:
-#         return match.group(1).strip()
-#     else:
-#         return INVALID_ANSWER
 def get_unnormalized_answer(text: str) -> str:
     INVALID_ANSWER = "[invalidanswer]"
 
@@ -342,14 +332,13 @@ def load_aime24_dataset(
     return problems
 
 
-
-
 def load_math_dataset(
     split: str = "train",
     problem_types: Optional[List[str]] = None,
     difficulty_levels: Optional[List[str]] = None,
     max_problems: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
+    """Load MATH-500 (HuggingFaceH4/MATH-500) with optional subject, level, and size filters."""
     print(f"[INFO] Loading MATH dataset from Hugging Face (HuggingFaceH4/MATH-500)")
     
     ds = load_dataset("HuggingFaceH4/MATH-500")
@@ -404,6 +393,7 @@ def load_math_dataset(
 
 
 def check_math_answer_equivalence(pred: str, gold: str) -> bool:
+    """Check whether a prediction matches the gold answer."""
     pred_extracted = get_unnormalized_answer(pred)
     
     if pred_extracted == "[invalidanswer]":
@@ -419,6 +409,7 @@ def check_math_answer_equivalence(pred: str, gold: str) -> bool:
 
 
 def extract_math_prediction(response: UniversalResponse, problem_data: Dict) -> str:
+    """Extract the predicted answer from an agent response."""
     predicted_answer = get_unnormalized_answer(response.answer_unstructured)
     
     if predicted_answer == "[invalidanswer]":
@@ -428,6 +419,7 @@ def extract_math_prediction(response: UniversalResponse, problem_data: Dict) -> 
 
 
 class MATHCore:
+    """Wraps a UniversalAgent with MATH-500 prompts, loading, and answer checking."""
     def __init__(self, agent: UniversalAgent, prompts: Dict[str, str]):
         self.agent = agent
         self.prompts = prompts
@@ -482,7 +474,6 @@ class MATHCore:
         return self.agent.get_stats()
 
 
-
 class AIME24Core(MATHCore):
     """
     Same interface as MATHCore, but backed by the AIME 2024 dataset.
@@ -503,7 +494,6 @@ class AIME24Core(MATHCore):
             difficulty_levels=difficulty_levels,
             max_problems=max_problems,
         )
-
 
 
 class AMOCore(MATHCore):

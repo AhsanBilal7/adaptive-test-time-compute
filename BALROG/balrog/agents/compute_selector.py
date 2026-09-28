@@ -1,3 +1,5 @@
+"""Compute selector for BALROG agents: chooses Best-of-N, beam search, or lookahead and its parameter."""
+
 import json
 from typing import Dict, Any
 from balrog.schemas import DecisionPayload
@@ -65,7 +67,6 @@ class ComputeSelector:
 
         # Keep only the last message block from history to avoid bloat; you can expand if you like.
         msgs = [sys] + (history_messages[-3:] if history_messages else []) + [user]
-        # msgs = [sys] + [user]
         return msgs
     
     def _parse_and_validate(self, text: str) -> Dict[str, Any]:
@@ -100,10 +101,9 @@ class ComputeSelector:
         """
         messages = self._build_prompt(obs, plan, tool_name, history_messages or [])
         try:
-            # resp = self.client.generate(messages)
             resp = self.client.generate_with_structured(messages, DecisionPayload.model_json_schema())
             text = resp.completion if hasattr(resp, "completion") else str(resp)
-            print("Compute selection response text:", text)  # Debugging line
+            print("Compute selection response text:", text)
         except Exception:
             selection = dict(_DEFAULT)
         else:

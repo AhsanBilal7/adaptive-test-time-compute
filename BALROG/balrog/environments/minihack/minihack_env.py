@@ -1,3 +1,5 @@
+"""MiniHack environment constructor."""
+
 from typing import Optional
 
 import gymnasium as gym

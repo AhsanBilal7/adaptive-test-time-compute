@@ -1,3 +1,5 @@
+"""Instruction prompt for the Crafter environment."""
+
 from .env import ACTIONS, CrafterLanguageWrapper
 
 ACTION_DICT = {

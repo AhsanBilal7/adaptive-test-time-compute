@@ -1,3 +1,5 @@
+"""Web-search tool stub; no external search backend is connected."""
+
 class WebSearchTool:
     """Placeholder for web search/retrieval functionality."""
     
@@ -15,8 +17,7 @@ class WebSearchTool:
         Returns:
             str: Search results (placeholder)
         """
-        # TODO: Integrate with actual search API (e.g., Google, Bing, custom retrieval)
-        # For now, return a placeholder
+        # Placeholder: no external search backend is connected.
         result = f"[Web search placeholder for query: {str(query)[:100]}]"
         
         self.search_history.append({

@@ -1,3 +1,5 @@
+"""Language wrapper that describes Crafter observations in text."""
+
 import itertools
 import re
 from collections import defaultdict

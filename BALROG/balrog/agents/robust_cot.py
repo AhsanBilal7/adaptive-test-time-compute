@@ -1,3 +1,5 @@
+"""Chain-of-thought BALROG agent with a strict action output format."""
+
 import copy
 import re
 

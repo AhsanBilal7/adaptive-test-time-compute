@@ -1,3 +1,5 @@
+"""Collects multi-configuration agent rollouts and builds preference pairs for the optional learned controller."""
+
 import json
 import time
 from pathlib import Path
@@ -17,7 +19,7 @@ class TrajectoryStep:
     tool_input: str
     tool_output: str
     reasoning_steps: List[str]
-    # New fields for detailed outputs
+    # Detailed per-step outputs
     reasoner_output: Optional[Dict[str, Any]] = None
     compute_strategy_output: Optional[Dict[str, Any]] = None
 
@@ -37,7 +39,7 @@ class Trajectory:
     run_id: str
     config: Dict[str, Any]
     metadata: Dict[str, Any]
-    # New fields for complete output tracking
+    # Complete output tracking
     all_compute_strategy_outputs: List[Dict[str, Any]] = None
     all_reasoner_outputs: List[Dict[str, Any]] = None
     # Answer tracking
@@ -108,116 +110,8 @@ class TrajectoryGenerator:
             for i in range(1,  10)
         ])    
         return configs
-    
-    
-    # def _get_rollout_configs(self) -> List[Dict[str, Any]]:
-    #     """Generate K rollout configurations per question."""
-    #     configs = []
-        
-    #     # 2× CoT with different compute budgets
-    #     configs.extend([
-    #         {
-    #             "name": "cot_n1",
-    #             "use_planner": False,
-    #             "use_tool_selector": False,
-    #             "use_compute_selector": False,
-    #             "fixed_tool": "cot",
-    #             "fixed_compute": {"strategy": "best_of_n", "param": 1},
-    #         },
-    #         {
-    #             "name": "cot_n4",
-    #             "use_planner": False,
-    #             "use_tool_selector": False,
-    #             "use_compute_selector": False,
-    #             "fixed_tool": "cot",
-    #             "fixed_compute": {"strategy": "best_of_n", "param": 4},
-    #         },
-    #     ])
-        
-    #     # 2× Self-reflection with different compute budgets
-    #     configs.extend([
-    #         {
-    #             "name": "self_reflection_n1",
-    #             "use_planner": False,
-    #             "use_tool_selector": False,
-    #             "use_compute_selector": False,
-    #             "fixed_tool": "self_reflection",
-    #             "fixed_compute": {"strategy": "best_of_n", "param": 1},
-    #         },
-    #         {
-    #             "name": "self_reflection_n4",
-    #             "use_planner": False,
-    #             "use_tool_selector": False,
-    #             "use_compute_selector": False,
-    #             "fixed_tool": "self_reflection",
-    #             "fixed_compute": {"strategy": "best_of_n", "param": 4},
-    #         },
-    #     ])
-        
-    #     # 2× Tool selector with different compute budgets
-    #     configs.extend([
-    #         {
-    #             "name": "tool_selector_n1",
-    #             "use_planner": True,
-    #             "use_tool_selector": True,
-    #             "use_compute_selector": False,
-    #             "fixed_tool": None,
-    #             "fixed_compute": {"strategy": "best_of_n", "param": 1},
-    #         },
-    #         {
-    #             "name": "tool_selector_n4",
-    #             "use_planner": True,
-    #             "use_tool_selector": True,
-    #             "use_compute_selector": False,
-    #             "fixed_tool": None,
-    #             "fixed_compute": {"strategy": "best_of_n", "param": 4},
-    #         },
-    #     ])
-        
-    #     # 2× Full system with compute selector
-    #     configs.extend([
-    #         {
-    #             "name": "full_system_n1",
-    #             "use_planner": True,
-    #             "use_tool_selector": True,
-    #             "use_compute_selector": True,
-    #             "fixed_tool": None,
-    #             "fixed_compute": None,
-    #         },
-    #         {
-    #             "name": "full_system_n4",
-    #             "use_planner": True,
-    #             "use_tool_selector": True,
-    #             "use_compute_selector": True,
-    #             "fixed_tool": None,
-    #             "fixed_compute": None,
-    #         },
-    #     ])
-        
-    #     # 2× Forced negatives (restricted tools or low budget)
-    #     configs.extend([
-    #         {
-    #             "name": "restricted_tools",
-    #             "use_planner": False,
-    #             "use_tool_selector": False,
-    #             "use_compute_selector": False,
-    #             "fixed_tool": "cot",
-    #             "fixed_compute": {"strategy": "best_of_n", "param": 1},
-    #             "restrict_tools": True,  # Signal to disable certain tools
-    #         },
-    #         {
-    #             "name": "low_budget",
-    #             "use_planner": False,
-    #             "use_tool_selector": False,
-    #             "use_compute_selector": False,
-    #             "fixed_tool": "cot",
-    #             "fixed_compute": {"strategy": "best_of_n", "param": 1},
-    #             "truncate_early": True,  # Signal to stop early
-    #         },
-    #     ])
-        
-    #     return configs
-    
+
+
     def _compute_trajectory_cost(
         self,
         metadata: Dict[str, Any],
@@ -400,7 +294,6 @@ class TrajectoryGenerator:
                         
                         # Evaluate correctness
                         predicted = MATHCore.extract_prediction(response, problem_data)
-                        # gold = problem_data["solution"]
                         gold = MATHCore.get_last_dollar_normalize_final_answer(problem_data["solution"]) 
                         is_correct = MATHCore.check_answer(predicted, gold)
                         

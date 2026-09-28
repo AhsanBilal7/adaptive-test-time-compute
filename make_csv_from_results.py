@@ -1,3 +1,5 @@
+"""Plots tool, compute-strategy, and parameter usage from pathway.json or results_final.json files."""
+
 import json
 import argparse
 from pathlib import Path

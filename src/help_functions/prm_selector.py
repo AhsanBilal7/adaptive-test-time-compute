@@ -1,3 +1,5 @@
+"""Qwen2.5-Math-PRM-7B scorer for step rewards and inter-iteration selection (Eq. 1-2)."""
+
 import torch
 from transformers import AutoModel, AutoTokenizer
 import torch.nn.functional as F
@@ -9,6 +11,7 @@ warnings.filterwarnings("ignore", message=".*past_key_values.*deprecated.*")
 
 
 class PRMSelector:
+    """Wraps Qwen2.5-Math-PRM-7B to score trajectories and select the best iteration."""
     
     def __init__(self, model_name: str = "Qwen/Qwen2.5-Math-PRM-7B", device: str = "auto"):
         self.model_name = model_name
@@ -32,6 +35,7 @@ class PRMSelector:
         logits: torch.Tensor, 
         token_masks: torch.Tensor
     ) -> List[List[float]]:
+        """Convert PRM logits at step-separator tokens into per-step rewards."""
         
         probabilities = F.softmax(logits, dim=-1)
         probabilities = probabilities * token_masks.unsqueeze(-1)
@@ -51,6 +55,7 @@ class PRMSelector:
         reasoning_steps: List[str],
         system_prompt: str
     ) -> Dict[str, Any]:
+        """Score reasoning steps; returns step, mean, min, and final rewards."""
         
         if len(reasoning_steps) == 1 and isinstance(reasoning_steps[0], str):
             steps = [reasoning_steps[0]]
@@ -104,10 +109,10 @@ class PRMSelector:
             "final_reward": float(final_reward),
             "num_steps": len(rewards)
         }
-    
 
 
     def combine_fields(self, entry):
+        """Combine plan, steps, tools, compute config, and answer into one scoring text."""
         plan = entry.get("plan", "")
         reasoning_steps = entry.get("reasoning_steps", [])
         tools_used = entry.get("tools_used", [])
@@ -134,42 +139,17 @@ class PRMSelector:
         system_prompt: str, 
         meta_data=None
     ) -> Tuple[int, Dict[str, Any], List[Dict[str, Any]]]:
+        """Score all iterations and return (best_idx, best_iteration, all_scores)."""
         
         all_scores = []
         
         print(f"[INFO] Scoring {len(iteration_results)} iterations with PRM...")
         
         for idx, iter_result in enumerate(iteration_results):
-            # reasoning_steps = []
-            # predicted_answer = iter_result.get("predicted_answer", "")
-            
-            # if meta_data and (meta_data.get("use_tool_selector") or meta_data.get("fixed_tool")):
-            #     # Case 1: Tool selector or fixed tool - add reasoning steps AND final answer
-            #     reasoning_steps = iter_result.get("reasoning_steps", [])
-            #     if not reasoning_steps:
-            #         reasoning = iter_result.get("reasoning", "")
-            #         reasoning_steps = [reasoning] if reasoning else [""]
-                
-            #     # Add final prediction at the end of reasoning steps
-            #     if predicted_answer:
-            #         reasoning_steps.append(f"Final Answer: {predicted_answer}")
-            # else:
-            #     # Case 2: No tool selector/fixed tool - only add final answer
-            #     if predicted_answer:
-            #         reasoning_steps = [f"Final Answer of this problem is {predicted_answer}"]
-            
             scoring_text = self.combine_fields(iter_result)
             
-            # scores = self.score_reasoning(problem, reasoning_steps, system_prompt)
             scores = self.score_reasoning(problem, scoring_text, system_prompt)
             
-            # print("🎉=" * 60)
-            # print(f"Problem: {problem}")
-            # print(f"Iterated Results: {iter_result.keys()}")
-            # print(f"Reasoning Steps: {scoring_text}")
-            # print(f" Score: {scores}")
-            # print("🎉=" * 60)
-
             scores["iteration"] = idx + 1
             all_scores.append(scores)
             
@@ -205,6 +185,7 @@ class PRMSelector:
         selection_metric: str,
         system_prompt: str
     ) -> List[Tuple[int, Dict[str, Any], List[Dict[str, Any]]]]:
+        """Run select_best_iteration for several problems."""
         
         results = []
         

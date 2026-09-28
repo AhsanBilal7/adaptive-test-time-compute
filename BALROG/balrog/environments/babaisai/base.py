@@ -1,3 +1,5 @@
+"""Language wrapper for the BabaIsAI environment."""
+
 from collections import defaultdict
 
 import baba
@@ -123,7 +125,6 @@ class BabaIsAIWrapper(gym.Wrapper):
             if named_property == "you":
                 you = rule["object"]
 
-        # TODO: we need to handle multilpe me)
         my_position = find_objects([you])
         if len(my_position) == 0:
             # We should reset the environment, as baba cannot legally move anymore

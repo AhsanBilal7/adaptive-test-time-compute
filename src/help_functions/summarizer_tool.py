@@ -1,4 +1,7 @@
+"""Summarizer tool that compresses long reasoning trajectories."""
+
 class SummarizerTool:
+    """Compresses long reasoning with the LLM."""
     
     def __init__(self, client):
         self.client = client

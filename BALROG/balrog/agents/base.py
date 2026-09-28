@@ -1,3 +1,5 @@
+"""Base agent class for prompt-based interaction."""
+
 class BaseAgent:
     """Base class for agents using prompt-based interactions."""
 

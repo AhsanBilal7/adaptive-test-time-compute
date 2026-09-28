@@ -1,3 +1,5 @@
+"""Time-limit wrapper for NLE environments."""
+
 import gymnasium as gym
 from nle.env.base import NLE
 

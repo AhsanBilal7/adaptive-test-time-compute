@@ -1,3 +1,5 @@
+"""Instruction prompt for the BabyAI-Text environment."""
+
 from .clean_lang_wrapper import BabyAITextCleanLangWrapper
 
 ACTIONS = {

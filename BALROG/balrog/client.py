@@ -1,3 +1,5 @@
+"""LLM client wrappers (Hugging Face Transformers, Ollama, OpenAI/vLLM, Gemini, Claude) with a common generate API."""
+
 import base64
 import datetime
 import logging
@@ -336,10 +338,6 @@ class TransformerWrapper(LLMClientWrapper):
             input_tokens = input_length
             output_tokens = len(generated_ids)
             
-            # print("*"*80)
-            # print(f"Message: {messages}")
-            # print(f"response_text: {response_text}")
-            # print("*"*80)
             return response_text, input_tokens, output_tokens
 
         response_text, input_tokens, output_tokens = self.execute_with_retries(api_call)
@@ -547,8 +545,6 @@ class OpenAIWrapper(LLMClientWrapper):
         for msg in messages:
             msg = OmegaConf.create(msg)
             new_content = [{"type": "text", "text": msg.content}]
-            # if msg.attachment is not None:
-            #     new_content.append(process_image_openai(msg.attachment))
             if self.alternate_roles and converted_messages and converted_messages[-1]["role"] == msg.role:
                 converted_messages[-1]["content"].extend(new_content)
             else:
@@ -863,8 +859,6 @@ class OllamaWrapper(LLMClientWrapper):
         )
         
 
-        # stream=False,
-        # keep_alive=self.client_kwargs.get("keep_alive", "5m")
         return LLMResponse(
             model_id=self.model_id,
             completion=response["message"]["content"].strip(),
@@ -892,16 +886,12 @@ class OllamaWrapper(LLMClientWrapper):
         self._initialize_client()
         converted_messages = self.convert_messages(messages)
 
-        # if self._use_native:
         # Use native ollama library with structured output
         # Separate system and other messages
         system_messages, other_messages = self._extract_system_and_user_messages(converted_messages)
         
         # Combine: system messages first, then the rest
         final_messages = system_messages + other_messages
-        # print("====================================================")
-        # print(final_messages)
-        # print("====================================================")
 
         response = self.ollama.chat(
             model=self.model_id,
@@ -911,8 +901,6 @@ class OllamaWrapper(LLMClientWrapper):
             keep_alive="30m"  # Keep model loaded for 30 minutes
         )
         
-        # stream=False,
-        # keep_alive=self.client_kwargs.get("keep_alive", "5m")
         return LLMResponse(
             model_id=self.model_id,
             completion=response["message"]["content"].strip(),

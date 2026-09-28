@@ -1,3 +1,5 @@
+"""Components of the adaptive agent: selectors, reasoners, compute strategies, verifiers, and prompts."""
+
 from src.help_functions.self_reflection import SelfReflectionReasoner
 from src.help_functions.cot_reasoner import CoTReasoner
 from src.help_functions.tools import NumericVerifier, ReframeTool, VerifierTool

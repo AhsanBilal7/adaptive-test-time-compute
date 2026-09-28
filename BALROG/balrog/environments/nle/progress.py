@@ -1,3 +1,5 @@
+"""Progress tracking for NetHack and MiniHack episodes."""
+
 import json
 import os
 from dataclasses import dataclass, field
@@ -128,7 +130,6 @@ class Progress:
         Returns:
             str: The dungeong lvl
         """
-        # dlvl = string.split("$")[0]
         dlvl = f"Dlvl:{stats['depth']}"
         return dlvl
 

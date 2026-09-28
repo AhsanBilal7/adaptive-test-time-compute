@@ -1,3 +1,5 @@
+"""Crafter environment constructor with a Gym/Gymnasium compatibility shim."""
+
 from typing import Optional
 
 import crafter
@@ -86,7 +88,7 @@ def make_crafter_env(env_name, task, config, render_mode: Optional[str] = None):
     # Create raw Crafter env
     env = crafter.Env(**crafter_kwargs)
     
-    # ✅ Wrap for Gymnasium compatibility using fallback shim
+    # Wrap for Gymnasium compatibility using fallback shim
     env = _wrap_env_compat(env)
     
     # Now safe to wrap with custom language wrapper

@@ -1,4 +1,7 @@
 # test_multitool_chain.py
+
+"""Mock test for multi-tool chaining in the custom BALROG agent."""
+
 from types import SimpleNamespace
 from balrog.agents.custom import CustomAgent
 from balrog.agents.reasoners import (

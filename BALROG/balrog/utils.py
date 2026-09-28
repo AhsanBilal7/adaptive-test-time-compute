@@ -1,3 +1,5 @@
+"""Result aggregation, seeding, and API-key setup utilities for BALROG."""
+
 import hashlib
 import json
 import math
@@ -117,8 +119,8 @@ def collect_and_summarize_results(output_dir):
             "tasks": env_task_summaries,
             "input_tokens": env_total_input_tokens,
             "output_tokens": env_total_output_tokens,
-            "avg_input_tokens_per_episode": env_avg_input_tokens,     # NEW
-            "avg_output_tokens_per_episode": env_avg_output_tokens,   # NEW
+            "avg_input_tokens_per_episode": env_avg_input_tokens,
+            "avg_output_tokens_per_episode": env_avg_output_tokens,
         }
         env_summary_filename = os.path.join(output_dir, env_name, f"{env_name}_summary.json")
         Path(env_summary_filename).parent.mkdir(parents=True, exist_ok=True)
@@ -151,8 +153,8 @@ def collect_and_summarize_results(output_dir):
         "environments": overall_env_summaries,
         "total_input_tokens": overall_total_input_tokens,
         "total_output_tokens": overall_total_output_tokens,
-        "average_output_tokens_per_episode": overall_avg_output_tokens_per_episode,  # NEW
-        "total_episodes": overall_total_episodes,                                     # optional but handy
+        "average_output_tokens_per_episode": overall_avg_output_tokens_per_episode,
+        "total_episodes": overall_total_episodes,
         "client": client_config,
         "agent": agent_config,
     }

@@ -1,3 +1,5 @@
+"""Action set and instruction prompt for NetHack (NLE)."""
+
 import enum
 
 from .auto_more import AutoMore

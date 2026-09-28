@@ -1,13 +1,17 @@
+"""Chain-of-Thought (CoT) reasoner that produces one step-delimited reasoning action."""
+
 import re
 
 
 class CoTReasoner:
+    """Chain-of-Thought reasoner."""
     
     def __init__(self, client):
         self.client = client
         self.reasoning_history = []
     
     def generate_action(self, messages, instruction_prompt):
+        """Generate the next reasoning action; returns (action, reasoning)."""
         messages_copy = messages.copy()
         
         if messages_copy:
@@ -29,11 +33,6 @@ class CoTReasoner:
         action, reasoning = self._extract_action_and_reasoning(completion)
         self.reasoning_history.append(reasoning)
         
-        # print("===== CoT Reasoner Output =====")
-        # print("Generated Action:", action)
-        # print("Generated Reasoning:", reasoning)
-        # print("Messaeges Used:", messages_copy)
-        # print("================================")
 
         return action, reasoning
     
