@@ -147,8 +147,8 @@ On MATH-500 with Qwen-2.5-7B, the best fixed tool/strategy configuration also re
 We tested with Python 3.10+ and a single NVIDIA RTX 5090 (32 GB).
 
 ```bash
-git clone https://github.com/AhsanBilal7/hierarchical_gate_reason.git
-cd hierarchical_gate_reason
+git clone https://github.com/AhsanBilal7/adaptive-test-time-compute.git
+cd adaptive-test-time-compute
 
 conda create -n adaptive-ttc python=3.10 -y
 conda activate adaptive-ttc
